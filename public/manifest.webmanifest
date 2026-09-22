@@ -1,0 +1,10 @@
+{
+  "name": "Run Planner",
+  "short_name": "Run Planner",
+  "start_url": "/run-planner/",
+  "scope": "/run-planner/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [{ "src": "/run-planner/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

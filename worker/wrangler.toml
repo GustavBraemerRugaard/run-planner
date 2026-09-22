@@ -1,0 +1,12 @@
+name = "run-planner-strava"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+# Public — not a secret. From your Strava API application settings.
+[vars]
+STRAVA_CLIENT_ID = "281310"
+# Exact origins allowed to call this worker (no trailing slash).
+ALLOWED_ORIGINS = "http://localhost:5173,https://gustavbraemerrugaard.github.io"
+
+# STRAVA_CLIENT_SECRET is set separately as a secret, never committed:
+#   npx wrangler secret put STRAVA_CLIENT_SECRET
