@@ -79,7 +79,7 @@ export default function RunForm({ run, saving, onSave, onDelete, onCancel }: Pro
                 key={t}
                 type="button"
                 className={`chip ${t === type ? 'active' : ''}`}
-                style={{ '--chip': RUN_TYPES[t].color } as React.CSSProperties}
+                style={{ '--chip': RUN_TYPES[t].color, '--chip-text': RUN_TYPES[t].textColor } as React.CSSProperties}
                 onClick={() => setType(t)}
               >
                 {RUN_TYPES[t].label}

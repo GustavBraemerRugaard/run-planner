@@ -1,32 +1,13 @@
-import { useState } from 'react';
-import { formatKm } from '../domain/run';
-import {
-  athleteName,
-  buildAuthorizeUrl,
-  disconnect,
-  isConfigured,
-  isConnected,
-  listRecentActivities,
-  type StravaActivity,
-} from '../lib/strava';
+import { athleteName, buildAuthorizeUrl, disconnect, isConfigured, isConnected } from '../lib/strava';
 
-function formatDuration(sec: number): string {
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  return h > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${m} min`;
+interface Props {
+  connected: boolean;
+  loading: boolean;
+  onDisconnected: () => void;
 }
 
-/**
- * Minimal, standalone proof that the Strava connection works: connect/disconnect, and a manual
- * "Load recent activities" fetch. Not wired into the calendar yet — that comes once the connection
- * itself is solid.
- */
-export default function StravaPanel() {
-  const [connected, setConnected] = useState(isConnected());
-  const [activities, setActivities] = useState<StravaActivity[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
+/** Connect/disconnect only — the actual Strava data shows up in the calendar, latest-run card and weekly history. */
+export default function StravaPanel({ connected, loading, onDisconnected }: Props) {
   if (!isConfigured()) {
     return (
       <section className="strava-panel">
@@ -39,30 +20,17 @@ export default function StravaPanel() {
     );
   }
 
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      setActivities(await listRecentActivities(5));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
     <section className="strava-panel">
       <div className="strava-head">
-        <span className="label">Strava</span>
+        <span className="label">Strava{connected && athleteName() ? ` · ${athleteName()}` : ''}</span>
         {connected ? (
           <button
             type="button"
             className="btn small"
             onClick={() => {
               disconnect();
-              setConnected(false);
-              setActivities(null);
+              onDisconnected();
             }}
           >
             Disconnect
@@ -73,34 +41,8 @@ export default function StravaPanel() {
           </button>
         )}
       </div>
-
-      {connected && (
-        <>
-          <p className="fine">Connected{athleteName() ? ` as ${athleteName()}` : ''}.</p>
-          <button type="button" className="btn small" onClick={() => void load()} disabled={loading}>
-            {loading ? 'Loading…' : 'Load recent activities'}
-          </button>
-          {error && (
-            <p className="fine error" role="alert">
-              {error}
-            </p>
-          )}
-          {activities && (
-            <ul className="strava-activities">
-              {activities.length === 0 && <li className="fine">No recent runs found.</li>}
-              {activities.map((a) => (
-                <li key={a.id}>
-                  <span className="strava-date">{a.date}</span>
-                  <span className="strava-name">{a.name}</span>
-                  <span className="strava-stats">
-                    {formatKm(a.distanceKm)} km · {formatDuration(a.movingTimeSec)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
+      {connected && loading && <p className="fine">Loading your last 6 months of runs…</p>}
+      {!connected && isConnected() && <p className="fine">Reconnecting…</p>}
     </section>
   );
 }

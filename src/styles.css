@@ -33,9 +33,16 @@ body {
 
 .app { max-width: 1200px; margin: 0 auto; padding: 12px; }
 
-.topbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+/* Matches main's own two-column split (1fr content + 300px side rail) at the same breakpoint, so
+   the action buttons occupy exactly the same column as the side widgets below and their outer
+   edges land flush with the widgets' borders. */
+.topbar { display: grid; grid-template-columns: 1fr; align-items: center; gap: 8px; margin-bottom: 12px; }
 .topbar h1 { font-size: 1.25rem; margin: 0; }
-.topbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.topbar-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+@media (min-width: 1000px) {
+  .topbar { grid-template-columns: 1fr 300px; }
+  .topbar-actions { justify-content: space-between; }
+}
 
 .btn {
   font: inherit; font-size: 0.95rem; padding: 9px 14px; border-radius: 10px; cursor: pointer;
@@ -71,8 +78,26 @@ code { background: var(--border); padding: 1px 5px; border-radius: 5px; }
 main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 @media (min-width: 1000px) { main { grid-template-columns: 1fr 300px; align-items: start; } }
 .side { display: grid; gap: 16px; }
+.cal-col { display: grid; gap: 16px; min-width: 0; }
 
-.cal, .active-week, .chart-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+/* Scrollable panels keep their scroll but never show a scrollbar. */
+.no-scrollbar, .rolling-cal-body, .list-view, .week-history-list {
+  scrollbar-width: none; -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar, .rolling-cal-body::-webkit-scrollbar,
+.list-view::-webkit-scrollbar, .week-history-list::-webkit-scrollbar { display: none; }
+
+.cal, .active-week, .chart-card, .avg-stats { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+.avg-stats-head { display: flex; justify-content: space-between; align-items: center; }
+.avg-stats-toggle { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.avg-stats-toggle button {
+  font: inherit; font-size: 0.75rem; padding: 3px 9px; border: none; background: var(--panel);
+  color: var(--text); cursor: pointer;
+}
+.avg-stats-toggle button.active { background: var(--accent); color: var(--accent-text); }
+.avg-stats-rows { display: grid; gap: 6px; margin-top: 8px; }
+.avg-stats-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.85rem; }
+.avg-stats-row span { color: var(--muted); }
 
 .active-week-head { display: flex; justify-content: space-between; font-size: 0.9rem; }
 .summary-sub { color: var(--muted); font-size: 0.8rem; margin-top: 3px; }
@@ -88,40 +113,116 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 }
 .chart-plot { position: relative; margin: 18px 2px 6px; }
 .chart-gridline { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--border); }
-.chart-gridline span { position: absolute; right: 0; top: -14px; font-size: 0.65rem; color: var(--muted); }
-.chart-bars { position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 2px; }
+.chart-gridline span { position: absolute; right: 0; top: -14px; width: 32px; text-align: right; font-size: 0.65rem; color: var(--muted); }
+/* Right gutter reserved for the axis value labels above, so the last (current-week) bar never
+   sits underneath them. */
+.chart-bars { position: absolute; top: 0; bottom: 0; left: 0; right: 34px; display: flex; align-items: flex-end; gap: 2px; }
 .chart-bar-col { flex: 1; height: 100%; display: flex; align-items: flex-end; min-width: 3px; }
 .chart-bar { width: 100%; display: flex; flex-direction: column-reverse; border-radius: 3px 3px 0 0; overflow: hidden; min-height: 1px; }
 .chart-bar.current { outline: 2px solid var(--accent); outline-offset: 1px; }
 .chart-bar span { display: block; width: 100%; }
-.chart-foot { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--muted); margin-top: 4px; }
-.chart-avg { font-weight: 600; color: var(--text); }
 
-/* FullCalendar theming */
-.fc {
-  --fc-border-color: var(--border);
-  --fc-page-bg-color: var(--panel);
-  --fc-neutral-bg-color: var(--bg);
-  --fc-list-event-hover-bg-color: color-mix(in srgb, var(--accent) 12%, var(--panel));
-  --fc-today-bg-color: color-mix(in srgb, var(--accent) 10%, var(--panel));
-  --fc-button-bg-color: var(--panel);
-  --fc-button-border-color: var(--border);
-  --fc-button-text-color: var(--text);
-  --fc-button-hover-bg-color: var(--bg);
-  --fc-button-hover-border-color: var(--border);
-  --fc-button-active-bg-color: var(--accent);
-  --fc-button-active-border-color: var(--accent);
-  --fc-now-indicator-color: var(--danger);
-  font-size: 0.9rem;
+/* View toggle */
+.cal-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.cal-title { margin: 0; font-size: 1rem; font-weight: 700; }
+.cal-toolbar-actions { display: flex; align-items: center; gap: 8px; }
+.view-toggle { display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.view-toggle button {
+  font: inherit; font-size: 0.85rem; padding: 6px 14px; border: none; background: var(--panel);
+  color: var(--text); cursor: pointer;
 }
-.fc .fc-button { font-size: 0.85rem; padding: 6px 10px; }
-.fc .fc-button-primary:not(:disabled).fc-button-active { color: var(--accent-text); }
-.fc .fc-toolbar { flex-wrap: wrap; gap: 8px; }
-.fc .fc-toolbar-title { font-size: 1.1rem; }
-.fc .fc-event { cursor: pointer; }
+.view-toggle button.active { background: var(--accent); color: var(--accent-text); }
+
+/* Rolling month calendar */
+.rolling-cal { display: flex; flex-direction: column; height: 472px; }
+.rolling-cal-head {
+  display: grid; grid-template-columns: repeat(7, 1fr); font-size: 0.75rem; color: var(--muted);
+  padding: 0 2px 6px; border-bottom: 1px solid var(--border);
+}
+.rolling-cal-head span { text-align: center; }
+.rolling-cal-body { flex: 1; overflow-y: auto; }
+.rolling-week { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--border); min-height: 84px; }
+.rolling-day { border-right: 1px solid var(--border); padding: 4px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.rolling-day:last-child { border-right: none; }
+.rolling-day.today { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.rolling-day-num { font-size: 0.75rem; color: var(--muted); }
+.rolling-day.today .rolling-day-num { color: var(--accent); font-weight: 700; }
+.rolling-pills { display: flex; flex-direction: column; gap: 2px; }
+
+.pill {
+  font: inherit; font-size: 0.68rem; padding: 2px 5px; border-radius: 6px; cursor: pointer; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; border: none; font-weight: 600;
+}
+
+/* List view */
+.list-view { max-height: 472px; overflow-y: auto; display: grid; gap: 2px; }
+.list-day { padding: 8px 4px; border-bottom: 1px solid var(--border); }
+.list-day.today { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 8px; }
+.list-day-head { font-size: 0.85rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.list-today-badge { font-size: 0.68rem; font-weight: 700; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 1px 7px; }
+.list-day-entries { display: grid; gap: 5px; }
+.list-entry {
+  display: flex; align-items: center; gap: 8px; font: inherit; font-size: 0.85rem; text-align: left;
+  padding: 7px 9px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg); cursor: pointer;
+}
+.list-entry.planned { border-style: dashed; }
+.list-entry-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.list-entry-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-entry-sub { color: var(--muted); font-size: 0.78rem; flex: none; }
+.list-entry-empty { color: var(--muted); font-size: 0.82rem; cursor: pointer; padding: 4px 2px; }
+
+/* Active week / mileage chart: stacked actual (Strava, orange) + planned (by type) segments */
+.bar-seg { display: block; height: 100%; }
+.chart-seg { display: block; width: 100%; }
+
+/* Latest run card — metrics sit at their natural width and are spread with equal gaps between
+   them, so the last one's own right edge lands exactly on the card's right edge, flush with the
+   date above (same trick as the topbar: an even space-between over naturally-sized items, not an
+   equal-width grid that leaves left-aligned text short of the edge). */
+.latest-run { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; cursor: pointer; margin-bottom: 0; }
+.latest-run-head { display: flex; justify-content: space-between; align-items: center; }
+.latest-run-name { font-weight: 600; margin: 4px 0 8px; }
+.latest-run-stats { display: flex; justify-content: space-between; gap: 6px; }
+.latest-run-stats div { display: flex; flex-direction: column; flex: none; }
+.latest-run-stats strong { font-size: 1rem; }
+.latest-run-stats span { color: var(--muted); font-size: 0.7rem; }
+
+/* Weekly history list — every row shares one grid, so each metric column lines up across weeks */
+.week-history { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+.week-history-list { max-height: 340px; overflow-y: auto; display: grid; gap: 8px; margin-top: 8px; }
+.week-history-row {
+  display: grid; grid-template-columns: 1fr 46px 76px 76px 76px 68px; align-items: center; gap: 8px;
+  border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px;
+}
+.week-history-row.current { border-color: var(--accent); }
+.week-history-range { font-size: 0.82rem; font-weight: 600; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.week-history-stats { display: contents; }
+.week-history-stats > div { display: flex; align-items: baseline; gap: 3px; font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+.week-history-stats strong { color: var(--text); font-size: 0.92rem; }
+.trend { font-size: 0.7rem; color: var(--muted); font-weight: 700; }
+@media (max-width: 640px) {
+  .week-history-row { grid-template-columns: 1fr repeat(5, 1fr); font-size: 0.75rem; }
+}
+
+/* Activity detail modal — same trick as the latest-run card: naturally-sized metrics spread with
+   equal gaps, so the last one's right edge lands exactly on the box's own right edge. */
+.activity-totals { justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.activity-totals > div { flex: none; }
+.lap-charts { display: grid; gap: 14px; margin-top: 2px; }
+.lap-chart-block { display: grid; gap: 4px; }
+.lap-chart-row { display: flex; align-items: flex-start; gap: 8px; }
+.lap-chart-plot { flex: 1; min-width: 0; }
+.lap-chart { display: block; width: 100%; height: 78px; cursor: crosshair; }
+.lap-chart-xaxis { position: relative; height: 14px; border-top: 1px solid var(--border); }
+.lap-chart-xaxis span { position: absolute; top: 2px; font-size: 0.62rem; color: var(--muted); white-space: nowrap; }
+.lap-chart-axis { position: relative; height: 78px; font-size: 0.68rem; color: var(--muted); text-align: right; min-width: 48px; }
+.lap-chart-axis span { position: absolute; right: 0; white-space: nowrap; }
+.laps { margin-top: 4px; }
+.laps-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 6px; }
+.laps-table th, .laps-table td { padding: 5px 6px; text-align: right; border-bottom: 1px solid var(--border); }
+.laps-table th:first-child, .laps-table td:first-child { text-align: left; }
 @media (max-width: 700px) {
-  .fc .fc-toolbar { justify-content: center; }
-  .fc .fc-toolbar-title { order: -1; width: 100%; text-align: center; }
+  .rolling-cal, .list-view { height: 312px; max-height: 312px; }
 }
 
 /* Modal form */
@@ -160,7 +261,7 @@ textarea { resize: vertical; }
   font: inherit; font-size: 0.85rem; padding: 6px 12px; border-radius: 999px; cursor: pointer;
   border: 1.5px solid var(--chip); background: transparent; color: var(--text);
 }
-.chip.active { background: var(--chip); color: #fff; }
+.chip.active { background: var(--chip); color: var(--chip-text, #fff); }
 
 .actions { display: flex; gap: 8px; align-items: center; }
 .spacer { flex: 1; }

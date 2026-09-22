@@ -1,4 +1,5 @@
 import type { CalendarEvent, CalendarEventInput } from '../lib/calendar';
+import type { StravaActivity } from '../lib/strava';
 
 /**
  * The "domain" layer: what a planned run IS in this app, independent of Google Calendar or the UI.
@@ -12,20 +13,27 @@ export type RunType = 'easy' | 'tempo' | 'long' | 'intervals' | 'race';
 
 export interface RunTypeInfo {
   label: string;
+  /** Subtle, pastel background — meant to sit behind text (chips, calendar pills). */
   color: string;
+  /** Text color readable on top of `color`. */
+  textColor: string;
   /** Words (English + Danish) used to guess the type from an old free-text title. */
   keywords: string[];
 }
 
 export const RUN_TYPES: Record<RunType, RunTypeInfo> = {
-  easy: { label: 'Easy', color: '#22c55e', keywords: ['easy', 'rolig', 'jog'] },
-  tempo: { label: 'Tempo', color: '#f59e0b', keywords: ['tempo', 'threshold', 'tærskel', 'lt'] },
-  long: { label: 'Long Run', color: '#3b82f6', keywords: ['long', 'lang', 'langtur'] },
-  intervals: { label: 'Intervals', color: '#ef4444', keywords: ['interval', 'fartleg', 'bakke', 'hill'] },
-  race: { label: 'Race', color: '#a855f7', keywords: ['race', 'konkurrence', 'marathon', 'halvmarathon'] },
+  easy: { label: 'Easy', color: '#bbf7d0', textColor: '#14532d', keywords: ['easy', 'rolig', 'jog'] },
+  tempo: { label: 'Tempo', color: '#fecaca', textColor: '#7f1d1d', keywords: ['tempo', 'threshold', 'tærskel', 'lt'] },
+  long: { label: 'Long Run', color: '#fef08a', textColor: '#713f12', keywords: ['long', 'lang', 'langtur'] },
+  intervals: { label: 'Intervals', color: '#fca5a5', textColor: '#7f1d1d', keywords: ['interval', 'fartleg', 'bakke', 'hill'] },
+  race: { label: 'Race', color: '#e9d5ff', textColor: '#581c87', keywords: ['race', 'konkurrence', 'marathon', 'halvmarathon'] },
 };
 
 export const RUN_TYPE_ORDER: RunType[] = ['easy', 'tempo', 'long', 'intervals', 'race'];
+
+/** Completed (Strava) runs are always shown in this color, distinct from every planned type. */
+export const ACTUAL_COLOR = '#f97316';
+export const ACTUAL_TEXT_COLOR = '#ffffff';
 
 export type RestType = 'distance' | 'time';
 
@@ -307,4 +315,171 @@ export function summarizeWeeks(runs: Run[], firstDay: number): Map<string, WeekS
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ---- Planned + actual, combined -----------------------------------------------------------------
+
+/** "1:23:04" (h:mm:ss) or "45:30" (m:ss). */
+export function formatDuration(sec: number): string {
+  const total = Math.round(sec);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+export interface DayEntries {
+  date: string;
+  planned: Run[];
+  actual: StravaActivity[];
+}
+
+/** Everything planned and everything actually run, grouped by local date. */
+export function buildDayEntries(runs: Run[], activities: StravaActivity[]): Map<string, DayEntries> {
+  const map = new Map<string, DayEntries>();
+  const ensure = (date: string): DayEntries => {
+    let e = map.get(date);
+    if (!e) {
+      e = { date, planned: [], actual: [] };
+      map.set(date, e);
+    }
+    return e;
+  };
+  for (const r of runs) ensure(r.date).planned.push(r);
+  for (const a of activities) ensure(a.date).actual.push(a);
+  return map;
+}
+
+export interface CombinedWeekSummary extends WeekSummary {
+  /** km that came from completed (Strava) runs, a subset of totalKm. */
+  actualKm: number;
+  /** true if part of this week's total is still a plan rather than something you've actually run. */
+  isPlanned: boolean;
+}
+
+/**
+ * Weekly totals for the "active week" card and the mileage chart: days before today use what Strava
+ * actually recorded, today and future days use what's planned in the calendar (flagged via isPlanned
+ * so the UI can say so) — unless today already has a recorded run, in which case that counts instead.
+ */
+export function summarizeCombinedWeeks(
+  runs: Run[],
+  activities: StravaActivity[],
+  firstDay: number,
+  today: Date = new Date(),
+): Map<string, CombinedWeekSummary> {
+  const todayStr = localDateString(today);
+  const byDate = buildDayEntries(runs, activities);
+  const map = new Map<string, CombinedWeekSummary>();
+  for (const entry of byDate.values()) {
+    const key = weekKey(parseLocalDate(entry.date), firstDay);
+    const w = map.get(key) ?? { weekStart: key, totalKm: 0, runs: 0, byType: {}, actualKm: 0, isPlanned: false };
+    if (entry.actual.length > 0) {
+      for (const a of entry.actual) {
+        w.totalKm += a.distanceKm;
+        w.actualKm += a.distanceKm;
+        w.runs += 1;
+      }
+    } else if (entry.date >= todayStr) {
+      for (const r of entry.planned) {
+        const km = totalDistanceKm(r.steps);
+        w.totalKm += km;
+        w.runs += 1;
+        w.byType[r.type] = (w.byType[r.type] ?? 0) + km;
+      }
+      if (entry.planned.length > 0) w.isPlanned = true;
+    }
+    // a past day with no recorded run contributes nothing (a rest day / missed session).
+    map.set(key, w);
+  }
+  return map;
+}
+
+export interface ActualWeekSummary {
+  weekStart: string;
+  runs: number;
+  totalKm: number;
+  totalTimeSec: number;
+  avgPaceSecPerKm: number | null;
+  avgHeartRate: number | null;
+}
+
+/** Pure "what actually happened" weekly stats from Strava, for the historic-weeks list. */
+export function summarizeActualWeeks(activities: StravaActivity[], firstDay: number): Map<string, ActualWeekSummary> {
+  const map = new Map<string, ActualWeekSummary>();
+  const hrSum = new Map<string, { sum: number; time: number }>();
+  for (const a of activities) {
+    const key = weekKey(parseLocalDate(a.date), firstDay);
+    const w = map.get(key) ?? { weekStart: key, runs: 0, totalKm: 0, totalTimeSec: 0, avgPaceSecPerKm: null, avgHeartRate: null };
+    w.runs += 1;
+    w.totalKm += a.distanceKm;
+    w.totalTimeSec += a.movingTimeSec;
+    map.set(key, w);
+    if (a.averageHeartRate != null) {
+      const acc = hrSum.get(key) ?? { sum: 0, time: 0 };
+      acc.sum += a.averageHeartRate * a.movingTimeSec;
+      acc.time += a.movingTimeSec;
+      hrSum.set(key, acc);
+    }
+  }
+  for (const [key, w] of map) {
+    w.avgPaceSecPerKm = w.totalKm > 0 ? w.totalTimeSec / w.totalKm : null;
+    const acc = hrSum.get(key);
+    if (acc && acc.time > 0) w.avgHeartRate = acc.sum / acc.time;
+  }
+  return map;
+}
+
+export interface AverageStats {
+  weeksCount: number;
+  avgRunsPerWeek: number;
+  avgKmPerWeek: number;
+  avgTimeSecPerWeek: number;
+  /** Total time / total distance across the whole window — not an average of per-week paces. */
+  avgPaceSecPerKm: number | null;
+}
+
+/**
+ * Average weekly stats from actual Strava data over the last `weeksCount` weeks, including the
+ * current (possibly partial) week, so the averages line up with what `WeeklyHistoryList` shows.
+ */
+export function summarizeAverages(
+  activities: StravaActivity[],
+  firstDay: number,
+  weeksCount: number,
+  today: Date = new Date(),
+): AverageStats {
+  const currentWeekStart = weekKey(today, firstDay);
+  const start = parseLocalDate(currentWeekStart);
+  start.setDate(start.getDate() - 7 * (weeksCount - 1));
+  const startStr = localDateString(start);
+  let runs = 0;
+  let totalKm = 0;
+  let totalTimeSec = 0;
+  for (const a of activities) {
+    if (a.date >= startStr) {
+      runs += 1;
+      totalKm += a.distanceKm;
+      totalTimeSec += a.movingTimeSec;
+    }
+  }
+  return {
+    weeksCount,
+    avgRunsPerWeek: runs / weeksCount,
+    avgKmPerWeek: totalKm / weeksCount,
+    avgTimeSecPerWeek: totalTimeSec / weeksCount,
+    avgPaceSecPerKm: totalKm > 0 ? totalTimeSec / totalKm : null,
+  };
+}
+
+export type Trend = 'up' | 'down' | 'flat';
+
+/** Simple week-on-week direction, ignoring noise below `epsilonFrac` of the previous value. */
+export function trend(curr: number | null, prev: number | null, epsilonFrac = 0.02): Trend {
+  if (curr == null || prev == null || prev === 0) return 'flat';
+  const delta = (curr - prev) / prev;
+  if (delta > epsilonFrac) return 'up';
+  if (delta < -epsilonFrac) return 'down';
+  return 'flat';
 }

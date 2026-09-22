@@ -1,49 +1,69 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import FullCalendar from '@fullcalendar/react';
-import dayGridPlugin from '@fullcalendar/daygrid';
-import listPlugin from '@fullcalendar/list';
-import interactionPlugin from '@fullcalendar/interaction';
-import type { DatesSetArg, EventClickArg, DateSelectArg, EventDropArg, EventInput } from '@fullcalendar/core';
 import RunForm from './components/RunForm';
 import ActiveWeekCard from './components/ActiveWeekCard';
 import MileageChart from './components/MileageChart';
 import StravaPanel from './components/StravaPanel';
+import RollingCalendar, { type CalendarViewHandle } from './components/RollingCalendar';
+import ListView from './components/ListView';
+import ActivityDetail from './components/ActivityDetail';
+import LatestRunCard from './components/LatestRunCard';
+import WeeklyHistoryList from './components/WeeklyHistoryList';
+import AverageStatsCard from './components/AverageStatsCard';
 import { CALENDAR_ID, DEFAULT_CHART_WEEKS, FIRST_DAY, GOOGLE_CLIENT_ID } from './config';
-import { RUN_TYPES, buildTitle, fromEvent, localDateString, newStep, summarizeWeeks, toEventInput, weekKey, type Run } from './domain/run';
+import {
+  buildDayEntries,
+  fromEvent,
+  localDateString,
+  newStep,
+  summarizeActualWeeks,
+  summarizeCombinedWeeks,
+  toEventInput,
+  weekKey,
+  type CombinedWeekSummary,
+  type Run,
+} from './domain/run';
 import { hasValidToken, signIn, signOut } from './lib/auth';
 import { AuthError, deleteEvent, insertEvent, listEvents, patchEvent } from './lib/calendar';
-import { handleRedirect as handleStravaRedirect } from './lib/strava';
+import {
+  handleRedirect as handleStravaRedirect,
+  isConnected as isStravaConnected,
+  listActivities,
+  type StravaActivity,
+} from './lib/strava';
+
+type ViewMode = 'list' | 'month';
 
 const NARROW_PX = 700;
 const isNarrow = () => window.innerWidth < NARROW_PX;
 const notConfigured = GOOGLE_CLIENT_ID.startsWith('PASTE_') || CALENDAR_ID.startsWith('PASTE_');
+const GOOGLE_PAST_MONTHS = 6;
+const GOOGLE_FUTURE_MONTHS = 3;
+const STRAVA_MONTHS_BACK = 6;
 
 function blankRun(date: string): Run {
   const description = '';
   return { type: 'easy', date, steps: [newStep('main')], description, autoDescription: description };
 }
 
-/** How far back/forward we need events for: the visible calendar range, widened to cover the chart period. */
-function fetchRange(viewStart: Date, viewEnd: Date, chartWeeks: number): { start: Date; end: Date } {
-  const chartStart = new Date();
-  chartStart.setDate(chartStart.getDate() - (chartWeeks + 1) * 7);
-  const start = viewStart < chartStart ? viewStart : chartStart;
-  const end = viewEnd > new Date() ? viewEnd : new Date();
-  return { start, end };
+function emptyCombinedWeek(weekStart: string): CombinedWeekSummary {
+  return { weekStart, totalKm: 0, runs: 0, byType: {}, actualKm: 0, isPlanned: false };
 }
 
 export default function App() {
   const [signedIn, setSignedIn] = useState(hasValidToken());
   const [runs, setRuns] = useState<Run[]>([]);
-  const [viewRange, setViewRange] = useState<{ start: Date; end: Date } | null>(null);
-  const [viewedWeekStart, setViewedWeekStart] = useState<string | null>(null);
+  const [stravaConnected, setStravaConnected] = useState(isStravaConnected());
+  const [activities, setActivities] = useState<StravaActivity[]>([]);
+  const [viewMode, setViewMode] = useState<ViewMode>(() => (isNarrow() ? 'list' : 'month'));
   const [chartWeeks, setChartWeeks] = useState(DEFAULT_CHART_WEEKS);
   const [loading, setLoading] = useState(false);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Run | null>(null);
-  const [stravaVersion, setStravaVersion] = useState(0);
-  const calRef = useRef<FullCalendar>(null);
+  const [selectedActivity, setSelectedActivity] = useState<StravaActivity | null>(null);
+  const [activeWeekStart, setActiveWeekStart] = useState<string | null>(null);
+  const calendarRef = useRef<CalendarViewHandle | null>(null);
 
   const handleError = useCallback((e: unknown) => {
     if (e instanceof AuthError) {
@@ -55,10 +75,14 @@ export default function App() {
   }, []);
 
   const load = useCallback(async () => {
-    if (!viewRange || !hasValidToken()) return;
-    const { start, end } = fetchRange(viewRange.start, viewRange.end, chartWeeks);
+    if (!hasValidToken()) return;
     setLoading(true);
     try {
+      const now = new Date();
+      const start = new Date(now);
+      start.setMonth(start.getMonth() - GOOGLE_PAST_MONTHS);
+      const end = new Date(now);
+      end.setMonth(end.getMonth() + GOOGLE_FUTURE_MONTHS);
       const events = await listEvents(start, end);
       setRuns(events.filter((e) => e.start?.date).map(fromEvent));
       setError(null);
@@ -67,17 +91,33 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [viewRange, chartWeeks, handleError]);
+  }, [handleError]);
+
+  const loadStrava = useCallback(async () => {
+    if (!isStravaConnected()) return;
+    setActivitiesLoading(true);
+    try {
+      setActivities(await listActivities(STRAVA_MONTHS_BACK));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setActivitiesLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (signedIn) void load();
   }, [signedIn, load]);
 
+  useEffect(() => {
+    if (stravaConnected) void loadStrava();
+  }, [stravaConnected, loadStrava]);
+
   // Completes the Strava connection if this page load is a redirect back from Strava's consent screen.
-  // StravaPanel reads its connected/athlete state once on mount, so bump its key afterward to make it re-check.
   useEffect(() => {
     handleStravaRedirect()
-      .then(() => setStravaVersion((v) => v + 1))
+      .then(() => setStravaConnected(isStravaConnected()))
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
@@ -97,24 +137,10 @@ export default function App() {
     setRuns([]);
   }
 
-  const events: EventInput[] = useMemo(
-    () =>
-      runs.map((r) => {
-        const next = new Date(`${r.date}T00:00`);
-        next.setDate(next.getDate() + 1);
-        return {
-          id: r.id,
-          title: buildTitle(r.type, r.steps),
-          start: r.date,
-          end: localDateString(next),
-          allDay: true,
-          backgroundColor: RUN_TYPES[r.type].color,
-          borderColor: RUN_TYPES[r.type].color,
-          extendedProps: { run: r },
-        };
-      }),
-    [runs],
-  );
+  function refresh() {
+    void load();
+    if (stravaConnected) void loadStrava();
+  }
 
   async function save(run: Run) {
     setSaving(true);
@@ -145,42 +171,14 @@ export default function App() {
     }
   }
 
-  // Drag to a new day: only the date changes, everything else about the run stays the same.
-  async function onEventChange(info: EventDropArg) {
-    const run = info.event.extendedProps.run as Run;
-    const date = info.event.startStr.slice(0, 10);
-    const updated: Run = { ...run, date };
-    try {
-      const saved = fromEvent(await patchEvent(run.id!, toEventInput(updated)));
-      setRuns((prev) => prev.map((r) => (r.id === saved.id ? saved : r)));
-      setError(null);
-    } catch (e) {
-      info.revert();
-      handleError(e);
-    }
-  }
+  const dayEntries = useMemo(() => buildDayEntries(runs, activities), [runs, activities]);
+  const combinedWeeks = useMemo(() => summarizeCombinedWeeks(runs, activities, FIRST_DAY), [runs, activities]);
+  const actualWeeks = useMemo(() => summarizeActualWeeks(activities, FIRST_DAY), [activities]);
+  const latestActivity = activities[0] ?? null;
 
-  function onSelect(sel: DateSelectArg) {
-    setEditing(blankRun(sel.startStr.slice(0, 10)));
-    calRef.current?.getApi().unselect();
-  }
-
-  function onDatesSet(arg: DatesSetArg) {
-    setViewRange((prev) =>
-      prev && prev.start.getTime() === arg.start.getTime() && prev.end.getTime() === arg.end.getTime()
-        ? prev
-        : { start: arg.start, end: arg.end },
-    );
-    // Week-shaped views (dayGridWeek / listWeek) drive the "active week" stat; a month view falls back
-    // to the real current week, since a month has no single week to show mileage for.
-    const isWeekView = arg.view.type.toLowerCase().includes('week');
-    setViewedWeekStart(isWeekView ? weekKey(arg.view.currentStart, FIRST_DAY) : null);
-  }
-
-  const weeklySummaries = useMemo(() => summarizeWeeks(runs, FIRST_DAY), [runs]);
   const todayWeekStart = weekKey(new Date(), FIRST_DAY);
-  const activeWeekStart = viewedWeekStart ?? todayWeekStart;
-  const activeWeek = weeklySummaries.get(activeWeekStart) ?? { weekStart: activeWeekStart, totalKm: 0, runs: 0, byType: {} };
+  const shownWeekStart = activeWeekStart ?? todayWeekStart;
+  const activeWeek = combinedWeeks.get(shownWeekStart) ?? emptyCombinedWeek(shownWeekStart);
 
   return (
     <div className="app">
@@ -192,8 +190,8 @@ export default function App() {
               <button className="btn primary" onClick={() => setEditing(blankRun(localDateString(new Date())))}>
                 + Add run
               </button>
-              <button className="btn" onClick={() => void load()} disabled={loading}>
-                {loading ? 'Loading…' : 'Refresh'}
+              <button className="btn" onClick={refresh} disabled={loading || activitiesLoading}>
+                {loading || activitiesLoading ? 'Loading…' : 'Refresh'}
               </button>
               <button className="btn" onClick={onSignOut}>
                 Sign out
@@ -215,7 +213,14 @@ export default function App() {
         </div>
       )}
 
-      <StravaPanel key={stravaVersion} />
+      <StravaPanel
+        connected={stravaConnected}
+        loading={activitiesLoading}
+        onDisconnected={() => {
+          setStravaConnected(false);
+          setActivities([]);
+        }}
+      />
 
       {!signedIn ? (
         <main className="signin">
@@ -227,33 +232,53 @@ export default function App() {
         </main>
       ) : (
         <main>
-          <div className="cal">
-            <FullCalendar
-              ref={calRef}
-              plugins={[dayGridPlugin, listPlugin, interactionPlugin]}
-              initialView={isNarrow() ? 'listWeek' : 'dayGridWeek'}
-              headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,dayGridWeek,listWeek' }}
-              buttonText={{ today: 'Today', month: 'Month', week: 'Week', list: 'List' }}
-              firstDay={FIRST_DAY}
-              weekNumbers
-              height="auto"
-              displayEventTime={false}
-              editable
-              selectable
-              selectMirror
-              longPressDelay={300}
-              eventLongPressDelay={300}
-              selectLongPressDelay={300}
-              events={events}
-              datesSet={onDatesSet}
-              select={onSelect}
-              eventClick={(arg: EventClickArg) => setEditing(arg.event.extendedProps.run as Run)}
-              eventDrop={(a) => void onEventChange(a)}
-            />
+          <div className="cal-col">
+            <div className="cal">
+              <div className="cal-toolbar">
+                <h2 className="cal-title">Calendar</h2>
+                <div className="cal-toolbar-actions">
+                  <button type="button" className="btn small" onClick={() => calendarRef.current?.scrollToToday()}>
+                    Today
+                  </button>
+                  <div className="view-toggle">
+                    <button className={viewMode === 'list' ? 'active' : ''} onClick={() => setViewMode('list')}>
+                      List
+                    </button>
+                    <button className={viewMode === 'month' ? 'active' : ''} onClick={() => setViewMode('month')}>
+                      Month
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {viewMode === 'month' ? (
+                <RollingCalendar
+                  ref={calendarRef}
+                  dayEntries={dayEntries}
+                  firstDay={FIRST_DAY}
+                  onSelectDate={(date) => setEditing(blankRun(date))}
+                  onSelectRun={(run) => setEditing(run)}
+                  onSelectActivity={(a) => setSelectedActivity(a)}
+                  onVisibleWeekChange={setActiveWeekStart}
+                />
+              ) : (
+                <ListView
+                  ref={calendarRef}
+                  dayEntries={dayEntries}
+                  firstDay={FIRST_DAY}
+                  onSelectDate={(date) => setEditing(blankRun(date))}
+                  onSelectRun={(run) => setEditing(run)}
+                  onSelectActivity={(a) => setSelectedActivity(a)}
+                  onVisibleWeekChange={setActiveWeekStart}
+                />
+              )}
+            </div>
+            <WeeklyHistoryList weeks={actualWeeks} firstDay={FIRST_DAY} />
           </div>
           <div className="side">
+            <LatestRunCard activity={latestActivity} onSelect={setSelectedActivity} />
             <ActiveWeekCard week={activeWeek} />
-            <MileageChart weeks={weeklySummaries} endWeekStart={todayWeekStart} count={chartWeeks} onCountChange={setChartWeeks} firstDay={FIRST_DAY} />
+            <AverageStatsCard activities={activities} firstDay={FIRST_DAY} />
+            <MileageChart weeks={combinedWeeks} endWeekStart={todayWeekStart} count={chartWeeks} onCountChange={setChartWeeks} firstDay={FIRST_DAY} />
           </div>
         </main>
       )}
@@ -268,6 +293,8 @@ export default function App() {
           onCancel={() => setEditing(null)}
         />
       )}
+
+      {selectedActivity && <ActivityDetail activity={selectedActivity} onClose={() => setSelectedActivity(null)} />}
     </div>
   );
 }

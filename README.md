@@ -4,11 +4,12 @@ A personal, private web app for planning running training on top of Google Calen
 It reads, edits and creates events in one calendar ("Løb"), works on desktop and iPhone,
 and is hosted for free on GitHub Pages. There is no backend: your calendar is the database.
 
-## What it does (phase 1)
+## What it does
+
+**Planning (Google Calendar)**
 
 - Sign in with Google (token kept in memory only, ~1 hour per sign-in).
-- Week / month / list views, all as full days (no time-of-day) — list view is the default on phones.
-- Add, edit, delete runs; drag to a different day to reschedule; changes go straight to Google Calendar.
+- Add, edit, delete runs, all as full days (no time-of-day).
 - Every run is built from **steps** (optional warm-up, one or more main steps, optional cool-down). Each main
   step is reps × distance @ target pace, with an optional rest (by distance or time) between reps — so a
   tempo run with a pace ladder, or an interval session, is entered the way you'd actually plan it.
@@ -18,16 +19,24 @@ and is hosted for free on GitHub Pages. There is no backend: your calendar is th
   `1,25k WU / 5x1k @ 4:15 min/km (200m rest) / 2,5k CD` (each on its own line). You can hand-edit it afterward;
   your edit is kept until you change the steps again, at which point "Reset to auto" brings back the generated text.
 - Run types: Easy, Tempo, Long Run, Intervals, Race. Older free-text titles are parsed as a fallback.
-- An "active week" card showing the mileage of whichever week you're viewing (falls back to the current real
-  week when you're in month view), and a weekly mileage bar chart over an adjustable period (12 weeks by default).
 
-## What it does (phase 2, so far)
+**Strava: planned vs. actual**
 
-- A "Strava" card (works independently of Google sign-in) with a **Connect Strava** button and, once connected,
-  a manual **Load recent activities** button that lists your last 5 Strava runs (name, date, distance, time).
-  This is deliberately just the connection proving itself — nothing here compares planned vs. actual yet.
-- The connection persists across reloads (Strava issues a long-lived refresh token, stored in this browser).
+- Connect once (works independently of Google sign-in); the last 6 months of your Strava runs are loaded
+  automatically and refreshed on demand. The connection persists across reloads via a stored refresh token;
   **Disconnect** clears it.
+- Two calendar views — **List** (a flat, chronological feed) and **Month** (a continuously scrollable grid of
+  weeks — scroll past the end of one month straight into the next, no "next month" click; it opens centered on
+  today's week). Both show planned runs and completed Strava runs as separate entries on the same day, so a
+  planned run stays visible even after you've done it.
+- Click any completed run to see its full detail: distance, time, pace, average heart rate, cadence, and a
+  per-lap breakdown of the same metrics.
+- A **latest run** card with the key numbers from your most recent Strava activity.
+- The **active week** card and the **weekly mileage chart** count what Strava actually recorded for days
+  before today, and what's still planned for today/future days (marked "still planned") — so the numbers
+  are real once you've run, and a forecast until then.
+- A scrollable **weekly history** list (actual Strava data, including the current week in progress): runs,
+  distance, time, average pace, average heart rate, each with a week-on-week ▲/▼ trend indicator.
 
 ## One-time setup
 
@@ -111,14 +120,16 @@ You should then see a "Connect Strava" button in the app.
 
 ```
 src/
-  config.ts            settings: client ID, calendar ID, week start, Strava client ID/worker URL, defaults
-  lib/auth.ts           Google sign-in (token in memory)
-  lib/calendar.ts        the ONLY code that talks to Google Calendar
-  lib/strava.ts           Strava connection: authorize URL, redirect handling, token refresh, activities
-  domain/run.ts         what a "run" is: types, steps, title/description generation, weekly totals
-  components/          RunForm (add/edit dialog), StepEditor (one step row), ActiveWeekCard,
-                        MileageChart, StravaPanel (add new fields/views here)
-  App.tsx               calendar view, wiring
+  config.ts             settings: client ID, calendar ID, week start, Strava client ID/worker URL, defaults
+  lib/auth.ts            Google sign-in (token in memory)
+  lib/calendar.ts         the ONLY code that talks to Google Calendar
+  lib/strava.ts            Strava connection: authorize URL, redirect handling, token refresh, activities, laps
+  domain/run.ts          what a "run" is: types, steps, title/description generation, planned+actual merging,
+                          weekly summaries (combined and actual-only), trend
+  components/           RunForm (add/edit dialog), StepEditor (one step row), RollingCalendar (month view),
+                         ListView (list view), ActivityDetail (laps modal), LatestRunCard, ActiveWeekCard,
+                         MileageChart, WeeklyHistoryList, StravaPanel (add new fields/views here)
+  App.tsx                view wiring, data loading (Google + Strava)
 worker/
   src/index.js          Cloudflare Worker: proxies Strava's OAuth token exchange/refresh, holds the client secret
   wrangler.toml         Worker config (client ID + allowed origins — not secret)
