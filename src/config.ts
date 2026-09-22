@@ -6,10 +6,10 @@ export const GOOGLE_CLIENT_ID = '1009741131131-2b46rlgcml9egqk6vlho02s9b3maqf9n.
 export const CALENDAR_ID = 'd57c5481f7b76b7595690c54b1b03cd3795889cbef275c7536fe170ea0b342d4@group.calendar.google.com';
 
 // Client ID from your Strava API application (strava.com/settings/api). Not a secret.
-export const STRAVA_CLIENT_ID = 'PASTE_YOUR_STRAVA_CLIENT_ID';
+export const STRAVA_CLIENT_ID = '281310';
 
 // The Cloudflare Worker's URL, from `npx wrangler deploy` in worker/ (see worker/README section in README.md).
-export const STRAVA_WORKER_URL = 'PASTE_YOUR_WORKER_URL';
+export const STRAVA_WORKER_URL = 'https://run-planner-strava.grugaard.workers.dev';
 // ---------------------------------------------------------------------------------------
 
 // Narrowest scope that allows reading and writing events.
