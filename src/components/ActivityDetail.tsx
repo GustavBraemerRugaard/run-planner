@@ -22,25 +22,40 @@ function niceKmStep(totalKm: number): number {
   return 10;
 }
 
-/** Rounds `v` to the nearest multiple of `step`. */
-function roundToNearest(v: number, step: number): number {
-  return Math.round(v / step) * step;
+/** Rounds `v` DOWN to the nearest multiple of `step` — used for the axis minimum, which must never
+ * land above the padded observed minimum (rounding to the "nearest" multiple instead could round up
+ * and eat into the required padding, or even land above the observed minimum itself). */
+function floorToStep(v: number, step: number): number {
+  return Math.floor(v / step) * step;
+}
+
+/** Rounds `v` UP to the nearest multiple of `step` — the maximum's counterpart to `floorToStep`. */
+function ceilToStep(v: number, step: number): number {
+  return Math.ceil(v / step) * step;
 }
 
 /**
- * Y-axis tick values between `axisMin` and `axisMax` (inclusive), spaced by a multiple of `step`
- * chosen so there are at most `maxLabels` of them — few enough to stay readable, but scaled to how
- * wide the axis span actually is (a narrow span gets fewer, closer-together labels).
+ * Y-axis tick values between `axisMin` and `axisMax` (inclusive), evenly spaced by a multiple of
+ * `step` chosen so there are at most `maxLabels` of them. `axisMin`/`axisMax` are always exact
+ * multiples of `step` (see `floorToStep`/`ceilToStep`), so the span between them is always an exact
+ * multiple of `step` too — this picks the smallest whole-step multiplier that divides the span
+ * evenly and keeps the tick count within `maxLabels`, so every gap between labels is the same size
+ * all the way to `axisMax`, never a shorter "leftover" last gap.
  */
 function axisTicks(axisMin: number, axisMax: number, step: number, maxLabels = 5): number[] {
   const span = axisMax - axisMin;
   if (span <= 0) return [axisMin];
-  const stepsAcross = span / step;
-  const multiplier = Math.max(1, Math.ceil(stepsAcross / (maxLabels - 1)));
+  const stepsAcross = Math.round(span / step);
+  let multiplier = stepsAcross;
+  for (let m = 1; m <= stepsAcross; m++) {
+    if (stepsAcross % m === 0 && stepsAcross / m <= maxLabels - 1) {
+      multiplier = m;
+      break;
+    }
+  }
   const tickStep = step * multiplier;
   const ticks: number[] = [];
-  for (let v = axisMin; v < axisMax - tickStep * 1e-6; v += tickStep) ticks.push(Math.round(v / step) * step);
-  ticks.push(axisMax);
+  for (let v = axisMin; v <= axisMax + tickStep * 1e-6; v += tickStep) ticks.push(Math.round(v / step) * step);
   return ticks;
 }
 
@@ -50,9 +65,12 @@ function axisTicks(axisMin: number, axisMax: number, step: number, maxLabels = 5
  * as distinct segments, and an x-axis in km showing distance covered. `invert` makes the smaller
  * value the taller bar (used for pace, where a lower number is the faster, "better" lap).
  *
- * The y-axis is deliberately wider than the raw min/max of the laps: it pads outward by
- * `axisPadding` before rounding to the nearest `axisStep`, so the tallest/shortest bar never
- * touches the top or bottom of the plot.
+ * The y-axis is deliberately wider than the raw min/max of the laps: `axisMin`/`axisMax` are pushed
+ * outward by at least `axisPadding` past the observed min/max, then floored/ceiled out further to the
+ * nearest multiple of `axisStep` — so the axis bounds are always both (a) strictly outside the
+ * observed range by at least `axisPadding`, and (b) a "nice" rounded value (a half-minute for pace,
+ * a multiple of 10 for heart rate), and the tallest/shortest bar never touches the top or bottom of
+ * the plot.
  */
 function LapChart({
   laps,
@@ -68,9 +86,13 @@ function LapChart({
   color: string;
   invert?: boolean;
   unitFmt: (v: number) => string;
-  /** Round the padded axis bounds to the nearest multiple of this (seconds for pace, bpm for HR). */
+  /** The axis bounds are always a multiple of this (seconds for pace, bpm for HR) — a half-minute
+   * (30s) for pace, 10 bpm for heart rate. */
   axisStep: number;
-  /** How far past the actual min/max the axis bounds are pushed before rounding. */
+  /** The minimum required gap between the axis bound and the actual observed min/max — 30s for
+   * pace, 10 bpm for heart rate (see the call sites below). The axis is pushed out to the nearest
+   * multiple of `axisStep` beyond this, so the real gap can end up larger than this minimum, but
+   * never smaller. */
   axisPadding: number;
 }) {
   const values = laps.map(accessor);
@@ -78,8 +100,8 @@ function LapChart({
   if (present.length < 2) return null;
   const min = Math.min(...present);
   const max = Math.max(...present);
-  const axisMin = roundToNearest(min - axisPadding, axisStep);
-  const axisMax = roundToNearest(max + axisPadding, axisStep);
+  const axisMin = floorToStep(min - axisPadding, axisStep);
+  const axisMax = ceilToStep(max + axisPadding, axisStep);
   const range = axisMax - axisMin || 1;
 
   const bounds: number[] = [0];
@@ -263,7 +285,7 @@ export default function ActivityDetail({ activity, onClose }: Props) {
                   invert
                   unitFmt={(v) => formatPace(v)}
                   axisStep={30}
-                  axisPadding={16}
+                  axisPadding={30}
                 />
               </div>
               {detail.laps.some((l) => l.averageHeartRate != null) && (
@@ -275,7 +297,7 @@ export default function ActivityDetail({ activity, onClose }: Props) {
                     color="#ef4444"
                     unitFmt={(v) => `${Math.round(v)} bpm`}
                     axisStep={10}
-                    axisPadding={16}
+                    axisPadding={10}
                   />
                 </div>
               )}
