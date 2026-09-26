@@ -224,7 +224,7 @@ export default function App() {
                   onClick={refresh}
                   disabled={loading || activitiesLoading}
                 >
-                  <span className={loading || activitiesLoading ? 'spinning' : ''}>⟳</span>
+                  <span className={`icon-refresh ${loading || activitiesLoading ? 'spinning' : ''}`}>⟳</span>
                 </button>
               </>
             )}

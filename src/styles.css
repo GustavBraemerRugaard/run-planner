@@ -75,7 +75,10 @@ body {
 .topbar-action-group > button:first-child { border-left: none; }
 .topbar-action-group > button.primary { background: var(--accent); color: var(--accent-text); }
 .topbar-action-group > button:disabled { opacity: 0.55; cursor: default; }
-.topbar-action-group .spinning { display: inline-block; animation: spin 0.8s linear infinite; }
+/* The refresh glyph renders visually smaller than the G/S/+ characters at the same font-size, so it
+   gets its own bump to look the same weight/size as its neighbors. */
+.icon-refresh { display: inline-block; font-size: 1.3em; line-height: 1; }
+.icon-refresh.spinning { animation: spin 0.8s linear infinite; }
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -130,6 +133,7 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .today-sub { color: var(--muted); font-size: var(--fs-caption); font-weight: 400; }
 .today-week { padding-left: 18px; }
 .today-week-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-1); }
+.today-week-total { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-2); }
 .today-week-total strong { font-size: var(--fs-value-lg); }
 .today-bar { margin-top: var(--sp-1); }
 .today-goal-edit { display: flex; align-items: center; gap: var(--sp-2); }

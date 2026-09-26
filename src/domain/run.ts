@@ -582,12 +582,18 @@ export function buildRunFormWeekContext(
   function dayList(date: string): WeekEntry[] {
     const entry = dayEntries.get(date);
     const list: WeekEntry[] = [];
-    for (const a of entry?.actual ?? []) {
+    const actual = entry?.actual ?? [];
+    for (const a of actual) {
       list.push({ date, label: a.name, km: a.distanceKm, kind: 'actual' });
     }
-    for (const r of entry?.planned ?? []) {
-      if (r.id === excludeRunId) continue;
-      list.push({ date, label: buildTitle(r.type, r.steps), km: totalDistanceKm(r.steps), kind: 'planned', runType: r.type });
+    // When Strava already has an actual run for this day, the calendar (planned) entry for the same
+    // day is redundant in this list — only the Strava one shows. The run currently being edited is
+    // still always shown here (marked "(editing)"), regardless of what else happened that day.
+    if (actual.length === 0) {
+      for (const r of entry?.planned ?? []) {
+        if (r.id === excludeRunId) continue;
+        list.push({ date, label: buildTitle(r.type, r.steps), km: totalDistanceKm(r.steps), kind: 'planned', runType: r.type });
+      }
     }
     if (date === draft.date) {
       list.push({ date, label: buildTitle(draft.type, draft.steps), km: draftKm, kind: 'planned', runType: draft.type, isDraft: true });
@@ -603,11 +609,16 @@ export function buildRunFormWeekContext(
     return source.reduce((sum, e) => sum + e.km, 0);
   }
 
+  /** This week's run-type mix is calendar-only: it always reflects planned runs, even on a day that
+   * also has a Strava activity (unlike the day lists and totals above, which prefer Strava there). */
   function addByTypeContribution(date: string, acc: Partial<Record<RunType, number>>) {
-    const list = dayList(date);
-    if (list.some((e) => e.kind === 'actual')) return; // actual wins, no type to attribute
-    for (const e of list) {
-      if (e.kind === 'planned' && e.runType) acc[e.runType] = (acc[e.runType] ?? 0) + e.km;
+    const entry = dayEntries.get(date);
+    for (const r of entry?.planned ?? []) {
+      if (r.id === excludeRunId) continue;
+      acc[r.type] = (acc[r.type] ?? 0) + totalDistanceKm(r.steps);
+    }
+    if (date === draft.date) {
+      acc[draft.type] = (acc[draft.type] ?? 0) + draftKm;
     }
   }
 

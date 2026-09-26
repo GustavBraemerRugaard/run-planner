@@ -75,18 +75,6 @@ export default function TodayCard({ dayEntries, thisWeek, prevWeekTotalKm, goalK
       <div className="today-week">
         <div className="today-week-head">
           <span className="label">This week</span>
-          {!editingGoal && (
-            <button
-              type="button"
-              className="btn small"
-              onClick={() => {
-                setGoalInput(goalKm != null ? String(goalKm) : '');
-                setEditingGoal(true);
-              }}
-            >
-              {goalKm != null ? 'Edit goal' : 'Set goal'}
-            </button>
-          )}
         </div>
 
         {editingGoal ? (
@@ -119,17 +107,29 @@ export default function TodayCard({ dayEntries, thisWeek, prevWeekTotalKm, goalK
         ) : (
           <>
             <div className="today-week-total">
-              <strong>{formatKm(thisWeek.totalKm)} km</strong>
-              {goalKm != null ? (
-                <span className="today-sub"> of {formatKm(goalKm)} km goal</span>
-              ) : (
-                <span className="today-sub">
-                  {' '}
-                  · last week {formatKm(prevWeekTotalKm)} km
-                  {dir === 'up' && ' ▲'}
-                  {dir === 'down' && ' ▼'}
-                </span>
-              )}
+              <div>
+                <strong>{formatKm(thisWeek.totalKm)} km</strong>
+                {goalKm != null ? (
+                  <span className="today-sub"> of {formatKm(goalKm)} km goal</span>
+                ) : (
+                  <span className="today-sub">
+                    {' '}
+                    · last week {formatKm(prevWeekTotalKm)} km
+                    {dir === 'up' && ' ▲'}
+                    {dir === 'down' && ' ▼'}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                className="btn small"
+                onClick={() => {
+                  setGoalInput(goalKm != null ? String(goalKm) : '');
+                  setEditingGoal(true);
+                }}
+              >
+                {goalKm != null ? 'Edit goal' : 'Set goal'}
+              </button>
             </div>
             <div className="bar today-bar">
               <span className="bar-seg" style={{ width: `${pct}%`, background: ACTUAL_COLOR }} />
