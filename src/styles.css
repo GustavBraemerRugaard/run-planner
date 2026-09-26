@@ -179,11 +179,11 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 }
 
 /* Scrollable panels keep their scroll but never show a scrollbar. */
-.no-scrollbar, .rolling-cal-body, .list-view, .week-history-list {
+.no-scrollbar, .rolling-cal-body, .list-view, .week-history-list, .form-context {
   scrollbar-width: none; -ms-overflow-style: none;
 }
 .no-scrollbar::-webkit-scrollbar, .rolling-cal-body::-webkit-scrollbar,
-.list-view::-webkit-scrollbar, .week-history-list::-webkit-scrollbar { display: none; }
+.list-view::-webkit-scrollbar, .week-history-list::-webkit-scrollbar, .form-context::-webkit-scrollbar { display: none; }
 
 .cal, .active-week, .chart-card, .avg-stats { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
 .avg-stats-head { display: flex; justify-content: space-between; align-items: center; }

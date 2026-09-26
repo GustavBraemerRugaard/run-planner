@@ -196,7 +196,10 @@ still match (they were last verified pixel-identical at 860×669).
     rolling total, this week's run-type mix (mini bars), and day-by-day rows for the previous and
     current week (each entry a colored dot + label + km, "(editing)" tag on the draft being edited).
     Its `max-height` is set in JS to exactly match the form panel's measured height, scrolling
-    internally if its own content is taller — the two panels always end at the same bottom edge.
+    internally if its own content is taller — the two panels always end at the same bottom edge. Its
+    scrollbar is hidden (`.form-context` is one of the app's `.no-scrollbar`-pattern elements — see
+    `docs/ARCHITECTURE.md`), since a visible scroll handle here would sit right next to the form's own
+    edge with nothing else to visually separate it.
 - **ActivityDetail** (`.modal-wrap.single`, one panel, `max-width: 860px`): activity name/date header,
   a totals row (same equal-gap-spread pattern as LatestRunCard), pace and HR lap-by-lap bar charts
   (`LapChart` — bar width proportional to lap distance, y-axis auto-scaled with padding so no bar

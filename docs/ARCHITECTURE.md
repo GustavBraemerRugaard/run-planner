@@ -173,6 +173,12 @@ widget when an existing token already means the same thing.
   `≥900px` rule) — always gate this kind of JS sizing behind the same `matchMedia` breakpoint used by
   the corresponding CSS rule, and disable it (pass `undefined`) below that breakpoint so mobile's
   natural, content-sized stacking isn't overridden.
+- **Scrollable-but-no-visible-scrollbar** (`.no-scrollbar` in `styles.css`, applied to `.rolling-cal-body`,
+  `.list-view`, `.week-history-list`, and `.form-context`): every internally-scrolling panel in the app
+  keeps its scroll behavior (`overflow-y: auto`/`scroll`) but hides the scroll handle itself
+  (`scrollbar-width: none` + a `::-webkit-scrollbar { display: none }` override), rather than showing a
+  native scrollbar. A new scrollable panel should join this same shared rule instead of introducing its
+  own scrollbar-hiding CSS or, worse, leaving its scrollbar visible.
 
 ## Breakpoints (all defined in `styles.css`, not per-component)
 
