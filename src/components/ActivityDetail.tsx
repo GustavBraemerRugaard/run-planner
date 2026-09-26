@@ -35,28 +35,18 @@ function ceilToStep(v: number, step: number): number {
 }
 
 /**
- * Y-axis tick values between `axisMin` and `axisMax` (inclusive), evenly spaced by a multiple of
- * `step` chosen so there are at most `maxLabels` of them. `axisMin`/`axisMax` are always exact
- * multiples of `step` (see `floorToStep`/`ceilToStep`), so the span between them is always an exact
- * multiple of `step` too — this picks the smallest whole-step multiplier that divides the span
- * evenly and keeps the tick count within `maxLabels`, so every gap between labels is the same size
- * all the way to `axisMax`, never a shorter "leftover" last gap.
+ * `count` y-axis tick VALUES evenly spaced, by position, between `axisMin` and `axisMax` (inclusive
+ * of both ends) — always `count` of them (min, `count - 2` evenly-spaced values in between, max),
+ * regardless of whether the in-between values land on a "nice" round number. Each tick's vertical
+ * POSITION uses its exact value, so it still lines up precisely with where that value falls between
+ * the bars; the label TEXT shown for it is rounded separately, by `unitFmt` (whole bpm for heart
+ * rate, whole seconds for pace via `formatPace`), so the axis reads as clean integers without the
+ * tick marks themselves needing to snap to a rounded value first.
  */
-function axisTicks(axisMin: number, axisMax: number, step: number, maxLabels = 5): number[] {
+function evenTicks(axisMin: number, axisMax: number, count = 5): number[] {
   const span = axisMax - axisMin;
   if (span <= 0) return [axisMin];
-  const stepsAcross = Math.round(span / step);
-  let multiplier = stepsAcross;
-  for (let m = 1; m <= stepsAcross; m++) {
-    if (stepsAcross % m === 0 && stepsAcross / m <= maxLabels - 1) {
-      multiplier = m;
-      break;
-    }
-  }
-  const tickStep = step * multiplier;
-  const ticks: number[] = [];
-  for (let v = axisMin; v <= axisMax + tickStep * 1e-6; v += tickStep) ticks.push(Math.round(v / step) * step);
-  return ticks;
+  return Array.from({ length: count }, (_, i) => axisMin + (span * i) / (count - 1));
 }
 
 /**
@@ -130,7 +120,7 @@ function LapChart({
 
   // Intermediate y-axis labels between the bounds, positioned by the same normalized-height math as
   // the bars themselves so each label lines up with the row of bars it corresponds to.
-  const yTicks = axisTicks(axisMin, axisMax, axisStep).map((v) => {
+  const yTicks = evenTicks(axisMin, axisMax).map((v) => {
     const norm = (v - axisMin) / range;
     const heightFrac = invert ? 1 - norm : norm;
     return { value: v, topPct: (1 - heightFrac) * 100 };
