@@ -20,9 +20,33 @@ interface Props {
 }
 
 const CHART_HEIGHT = 140;
+/** At most this many x-axis date labels are shown. Labels are rotated 90° (see the `.chart-x-axis-col`
+ * CSS), so each one only needs about one character's width rather than a whole "d/m" string's — the
+ * chart still lives in a ~300px-wide side-panel column, so once there are many weeks we still thin
+ * labels out (see `labeledIndices`) rather than render one under every single bar, just at a much
+ * higher cap than a horizontal label would allow. */
+const MAX_X_LABELS = 16;
 
 function emptyWeek(key: string): CombinedWeekSummary {
   return { weekStart: key, totalKm: 0, runs: 0, byType: {}, actualKm: 0, isPlanned: false };
+}
+
+/** The date the week starting `weekStart` (a Monday) ends on — its Sunday — as "d/m" (e.g. "27/9"). */
+function weekEndLabel(weekStart: string): string {
+  const start = parseLocalDate(weekStart);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  return `${end.getDate()}/${end.getMonth() + 1}`;
+}
+
+/** Which of `count` columns (0-indexed, oldest to newest) get an x-axis label: all of them when there
+ * are few enough to fit, otherwise `maxLabels` indices spread evenly across the full span (always
+ * including both the oldest week and the current one), so labels never land right next to each other. */
+function labeledIndices(count: number, maxLabels = MAX_X_LABELS): Set<number> {
+  if (count <= maxLabels) return new Set(Array.from({ length: count }, (_, i) => i));
+  const set = new Set<number>();
+  for (let i = 0; i < maxLabels; i++) set.add(Math.round((i * (count - 1)) / (maxLabels - 1)));
+  return set;
 }
 
 export default function MileageChart({ weeks, endWeekStart, count, onCountChange, firstDay }: Props) {
@@ -40,6 +64,7 @@ export default function MileageChart({ weeks, endWeekStart, count, onCountChange
 
   const max = Math.max(...period.map((w) => w.totalKm), 1);
   const gridlines = [0.25, 0.5, 0.75, 1];
+  const shownLabels = useMemo(() => labeledIndices(period.length), [period.length]);
 
   return (
     <section className="chart-card">
@@ -91,6 +116,14 @@ export default function MileageChart({ weeks, endWeekStart, count, onCountChange
             );
           })}
         </div>
+      </div>
+
+      <div className="chart-x-axis">
+        {period.map((w, i) => (
+          <div key={w.weekStart} className="chart-x-axis-col">
+            {shownLabels.has(i) && <span>{weekEndLabel(w.weekStart)}</span>}
+          </div>
+        ))}
       </div>
     </section>
   );

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import StepEditor, { newMainStep } from './StepEditor';
 import RunContextPanel from './RunContextPanel';
 import DateField from './DateField';
+import { saveStandardModalHeight } from '../lib/modalSize';
 import {
   RUN_TYPES,
   RUN_TYPE_ORDER,
@@ -44,12 +45,19 @@ export default function RunForm({ run, dayEntries, firstDay, saving, onSave, onD
 
   // On desktop (side-by-side layout) the context panel should match this form's own height exactly
   // — not stretch the form to match the panel's, which left dead space below the form's buttons.
-  // Below that breakpoint the two boxes stack, so no matching is applied there.
+  // Below that breakpoint the two boxes stack, so no matching is applied there. The measured height is
+  // also persisted as the app-wide "standard" popup height (see lib/modalSize.ts), so single-panel
+  // popups like the activity-detail view — never open at the same time as this one — can match it too.
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 900px)');
     const el = modalRef.current;
     if (!el) return;
-    const update = () => setMatchHeight(mq.matches ? modalRef.current?.getBoundingClientRect().height : undefined);
+    const update = () => {
+      const matches = mq.matches;
+      const height = modalRef.current?.getBoundingClientRect().height;
+      setMatchHeight(matches ? height : undefined);
+      if (matches && height) saveStandardModalHeight(height);
+    };
     const ro = new ResizeObserver(update);
     ro.observe(el);
     mq.addEventListener('change', update);

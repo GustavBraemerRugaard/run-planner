@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { formatDuration, formatKm, formatPace } from '../domain/run';
 import { getActivityDetail, type ActivityDetail as ActivityDetailData, type Lap, type StravaActivity } from '../lib/strava';
+import { getStandardModalHeight } from '../lib/modalSize';
 
 interface Props {
   activity: StravaActivity;
@@ -194,10 +195,23 @@ export default function ActivityDetail({ activity, onClose }: Props) {
   const d = detail ?? activity;
   const when = new Date(`${activity.date}T${activity.time || '00:00'}`);
 
+  // Matches the edit/create-run popup's own (content-driven) height — the app's shared popup-size
+  // standard — rather than sizing to this activity's own content, which can be much taller (lap
+  // charts, a long laps table) or shorter. Only applied at the desktop side-by-side breakpoint; below
+  // it, popups are full-width sheets and size to their own content as usual.
+  const [standardHeight, setStandardHeight] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 900px)');
+    const update = () => setStandardHeight(mq.matches ? getStandardModalHeight() : undefined);
+    mq.addEventListener('change', update);
+    update();
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-wrap single" onClick={(e) => e.stopPropagation()}>
-        <div className="modal">
+        <div className="modal" style={standardHeight ? { height: standardHeight } : undefined}>
           <h2>{activity.name}</h2>
           <p className="fine">
             {when.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })} ·{' '}

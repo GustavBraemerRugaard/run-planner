@@ -7,6 +7,8 @@
   --accent: #0284c7;
   --accent-text: #ffffff;
   --danger: #dc2626;
+  --warning: #d97706;
+  --success: #16a34a;
   --radius: 2px;
 
   /* Spacing scale — use these instead of ad hoc px values for new/touched layout rules. */
@@ -36,6 +38,8 @@
     --accent: #38bdf8;
     --accent-text: #06202f;
     --danger: #f87171;
+    --warning: #fbbf24;
+    --success: #4ade80;
   }
 }
 
@@ -104,6 +108,7 @@ code { background: var(--border); padding: 1px 5px; border-radius: 2px; }
 
 main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .side { display: grid; gap: 16px; }
+.side-top { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
 .cal-col { display: grid; gap: 16px; min-width: 0; }
 @media (min-width: 1000px) {
   /* On desktop the side rail should end flush with the calendar/weekly-history column below it:
@@ -115,6 +120,17 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
   .side { display: flex; flex-direction: column; }
   .side > .chart-card:last-child { flex: 1 1 auto; display: flex; flex-direction: column; }
   .side > .chart-card:last-child .chart-plot { flex: 1 1 auto; }
+  /* .side-top is given an explicit height (via JS, matching the calendar box's own rendered height —
+     see App.tsx) instead of sizing to its natural content. The gap between all three cards stays the
+     app's one standard var(--sp-4) — same as every other gap in the app — so spacing never looks
+     inconsistent. Instead, only the LAST card is allowed to flex-grow and absorb whatever slack is
+     needed to reach that height: it simply ends up a little taller, with a little empty room below its
+     own content, and because it's the one growing (not the gap above it), its own bottom border still
+     lands exactly flush with the calendar's bottom edge. Because the whole .side column is itself
+     stretched to match .cal-col's total height (the rule above), the chart still gets exactly the
+     weekly-history list's height regardless of how .side-top's own slack is distributed internally. */
+  .side-top { overflow-y: auto; }
+  .side-top > *:last-child { flex: 1 1 auto; }
 }
 
 /* The "today / this week at a glance" card: a next-run line, this week's total (vs. goal or last
@@ -201,13 +217,26 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 }
 .chart-plot { position: relative; margin: 18px 2px 6px; }
 .chart-gridline { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--border); }
-.chart-gridline span { position: absolute; right: 0; top: -14px; width: 32px; text-align: right; font-size: var(--fs-micro); color: var(--muted); }
-/* Right gutter reserved for the axis value labels above, so the last (current-week) bar never
-   sits underneath them. */
-.chart-bars { position: absolute; top: 0; bottom: 0; left: 0; right: 34px; display: flex; align-items: flex-end; gap: 2px; }
+.chart-gridline span { position: absolute; right: 4px; top: -14px; width: 40px; text-align: right; font-size: var(--fs-micro); color: var(--muted); }
+/* Right gutter reserved for the axis value labels above, with breathing room so bars never sit flush
+   against the numbers (the last/current-week bar is the tallest and the closest to them). */
+.chart-bars { position: absolute; top: 0; bottom: 0; left: 0; right: 52px; display: flex; align-items: flex-end; gap: 2px; }
 .chart-bar-col { flex: 1; height: 100%; display: flex; align-items: flex-end; min-width: 3px; }
 .chart-bar { width: 100%; display: flex; flex-direction: column-reverse; border-radius: 0; overflow: hidden; min-height: 1px; }
 .chart-bar.current { border: 2px solid var(--accent); }
+/* X-axis: week-ending dates, one column per bar, sharing the same right gutter and gap as .chart-bars
+   so each label lines up under its bar exactly. */
+.chart-x-axis { display: flex; align-items: flex-start; gap: 2px; padding-right: 52px; margin-top: 6px; height: 34px; }
+/* Labels are rotated 90° (reads bottom-to-top) so each one only needs about one character's worth of
+   horizontal space rather than a whole "d/m" string's width — this lets many more columns carry a
+   label before they'd start colliding, so far fewer weeks need to go unlabeled (see MAX_X_LABELS). */
+.chart-x-axis-col {
+  position: relative; flex: 1; min-width: 3px; display: flex; justify-content: center;
+  font-size: var(--fs-micro); color: var(--muted);
+}
+.chart-x-axis-col span {
+  writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap;
+}
 .chart-bar span { display: block; width: 100%; }
 
 /* View toggle */
@@ -263,6 +292,32 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .bar-seg { display: block; height: 100%; }
 .chart-seg { display: block; width: 100%; }
 
+/* Training-load (ACWR) signal, inside the active-week card. A 4-zone gauge (low / optimal / elevated
+   / high, at the 0.8/1.3/1.5 thresholds) with a marker at today's ratio — the "visual illustration of
+   the conclusion" alongside the raw number, so the takeaway reads at a glance without the number. */
+.training-load { margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--border); }
+.training-load-head { display: flex; justify-content: space-between; align-items: baseline; }
+.training-load-zone { font-size: var(--fs-value); }
+.training-load-zone.zone-low { color: var(--muted); }
+.training-load-zone.zone-optimal { color: var(--success); }
+.training-load-zone.zone-elevated { color: var(--warning); }
+.training-load-zone.zone-high { color: var(--danger); }
+.training-load-gauge { position: relative; display: flex; height: 8px; border-radius: 2px; overflow: visible; margin: var(--sp-2) 0 4px; }
+.training-load-gauge-seg { display: block; height: 100%; }
+.training-load-gauge-seg:first-child { border-top-left-radius: 2px; border-bottom-left-radius: 2px; }
+.training-load-gauge-seg:last-child { border-top-right-radius: 2px; border-bottom-right-radius: 2px; }
+.training-load-gauge-seg.seg-low { background: var(--border); }
+.training-load-gauge-seg.seg-optimal { background: color-mix(in srgb, var(--success) 55%, var(--border)); }
+.training-load-gauge-seg.seg-elevated { background: color-mix(in srgb, var(--warning) 65%, var(--border)); }
+.training-load-gauge-seg.seg-high { background: color-mix(in srgb, var(--danger) 70%, var(--border)); }
+.training-load-marker {
+  position: absolute; top: -3px; width: 2px; height: 14px; background: var(--text); transform: translateX(-1px);
+}
+/* Reserves room for 2 lines regardless of how long a given zone's hint text (or the "not enough data"
+   fallback) actually is, so the card doesn't grow/shrink as you browse to a week whose hint happens to
+   wrap differently — the training-load block (and so the whole active-week card) stays one fixed size. */
+.training-load-hint { min-height: calc(2 * 1.2em); }
+
 /* Latest run card — metrics sit at their natural width and are spread with equal gaps between
    them, so the last one's own right edge lands exactly on the card's right edge, flush with the
    date above (same trick as the topbar: an even space-between over naturally-sized items, not an
@@ -277,7 +332,10 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 
 /* Weekly history list — every row shares one grid, so each metric column lines up across weeks */
 .week-history { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
-.week-history-list { max-height: 340px; overflow-y: auto; display: grid; gap: 8px; margin-top: 8px; }
+/* ~2 rows shorter than showing every visible row at a glance used to (each row + its gap is ~43px) —
+   the mileage chart beside it is sized to match this list's own rendered height (see App.tsx/styles.css
+   .side-top), so shortening this list also shortens the chart to match, automatically. */
+.week-history-list { max-height: 254px; overflow-y: auto; display: grid; gap: 8px; margin-top: 8px; }
 .week-history-row {
   display: grid; grid-template-columns: 1fr 50px 84px 104px 90px 76px; align-items: center; gap: 8px;
   border: 1px solid var(--border); border-radius: 2px; padding: 8px 10px;
@@ -333,11 +391,14 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .modal h2 { margin: 0; font-size: 1.15rem; text-transform: uppercase; letter-spacing: 0.04em; }
 
 @media (min-width: 900px) {
-  /* align-items stays at its flex-start default here (not stretch): the form's own content should
-     decide the box height, with the context panel matched to it in JS (RunForm measures the form
-     and passes that height down) and scrolling internally if its own content is taller. Stretching
-     the row to the taller sibling's height left dead space below the shorter form's buttons. */
-  .modal-wrap { max-width: 860px; flex-direction: row; }
+  /* align-items must be set to flex-start explicitly here — the flex default ("normal") actually
+     computes to stretch, not flex-start, so without this the row's height is driven by whichever
+     child has the taller natural content (usually the context panel's day list) and the form gets
+     stretched to match it, leaving dead space below its Cancel/Save/Delete buttons. With flex-start,
+     the form's own content decides the box height, and the context panel is matched to it in JS
+     (RunForm measures the form and passes that height down), scrolling internally if its own content
+     is taller. */
+  .modal-wrap { max-width: 860px; flex-direction: row; align-items: flex-start; }
   .modal-wrap .modal { flex: 1 1 480px; max-width: 480px; }
   /* Single-panel popups (e.g. the run-detail view) use the same overall box — width and height — as
      the two-panel edit/create-run box, rather than each popup picking its own size. */

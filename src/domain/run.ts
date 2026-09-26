@@ -563,6 +563,114 @@ export function addDaysLocal(dateStr: string, n: number): string {
   return localDateString(d);
 }
 
+// ---- Training load / injury-risk (ACWR) ---------------------------------------------------------
+
+export type TrainingLoadZone = 'low' | 'optimal' | 'elevated' | 'high';
+
+export interface TrainingLoad {
+  /** EWMA of daily session load over ~7 days ("how much you've been doing lately"). */
+  acute: number;
+  /** EWMA of daily session load over ~28 days ("what you're built up to handle"). */
+  chronic: number;
+  /** acute / chronic. Null until there's any chronic load to divide by (a totally fresh history). */
+  acwr: number | null;
+  zone: TrainingLoadZone;
+}
+
+/**
+ * Foster's session-RPE scale (1–10, "how hard did that feel") — the standard, low-tech training-load
+ * unit sports science builds acute:chronic ratios from (load = duration in minutes × this factor).
+ * We don't have a subjective RPE, so each run type stands in for its typical perceived effort.
+ */
+const SESSION_INTENSITY: Record<RunType, number> = {
+  easy: 3,
+  tempo: 6,
+  long: 5,
+  intervals: 8,
+  race: 9,
+};
+/** Effort assumed for a completed (Strava) run with no matching planned run to say what it was. */
+const NEUTRAL_INTENSITY = 4;
+
+/** Typical pace (sec/km) for a run type, used only to estimate the duration of a future planned run
+ * whose steps have no target pace set — so it can still contribute an estimated load. */
+const FALLBACK_PACE_SEC_PER_KM: Record<RunType, number> = {
+  easy: 360,
+  tempo: 300,
+  long: 340,
+  intervals: 260,
+  race: 280,
+};
+
+function estimatedRunDurationSec(run: Run): number {
+  const fallbackPace = FALLBACK_PACE_SEC_PER_KM[run.type];
+  return run.steps.reduce((sum, s) => {
+    const pace = s.paceSecPerKm ?? fallbackPace;
+    return sum + s.reps * s.distanceKm * pace + restTimeSec(s);
+  }, 0);
+}
+
+/**
+ * One day's session load. A day with a completed run uses its real duration; the intensity factor
+ * comes from a same-day planned run's type when there is one (the best signal for what the run was
+ * meant to be), otherwise a neutral middle-of-the-road factor. A day with only a planned run
+ * (today/future, not yet completed) estimates duration from its steps' target paces. A rest day is 0.
+ */
+function dayLoad(entry: DayEntries | undefined): number {
+  if (!entry) return 0;
+  if (entry.actual.length > 0) {
+    const matchedType = entry.planned[0]?.type;
+    const intensity = matchedType ? SESSION_INTENSITY[matchedType] : NEUTRAL_INTENSITY;
+    return entry.actual.reduce((sum, a) => sum + (a.movingTimeSec / 60) * intensity, 0);
+  }
+  return entry.planned.reduce((sum, r) => sum + (estimatedRunDurationSec(r) / 60) * SESSION_INTENSITY[r.type], 0);
+}
+
+/** Gabbett's (2016) "sweet spot" zones: undertraining below, a safe training zone, then rising risk. */
+function classifyAcwr(acwr: number): TrainingLoadZone {
+  if (acwr < 0.8) return 'low';
+  if (acwr <= 1.3) return 'optimal';
+  if (acwr <= 1.5) return 'elevated';
+  return 'high';
+}
+
+/** ~12 weeks: comfortably enough history for the 28-day chronic EWMA to converge, without walking
+ * arbitrarily far back into (increasingly irrelevant, and increasingly likely to be missing) history. */
+const ACWR_LOOKBACK_DAYS = 84;
+const LAMBDA_ACUTE = 2 / (7 + 1);
+const LAMBDA_CHRONIC = 2 / (28 + 1);
+
+/**
+ * Acute:chronic workload ratio, "as of" a given date (defaults to today) — computed the way sports-
+ * science literature currently recommends: exponentially-weighted moving averages of daily training
+ * load, rather than simple rolling sums/averages of the last 7 vs 28 days. The EWMA approach avoids a
+ * "coupling" bias in the original rolling-average method, where the acute week is also counted inside
+ * the chronic month, systematically pulling the ratio toward 1 (Murray et al. 2017; Williams et al.
+ * 2016). Zones follow Gabbett (2016): <0.8 undertraining, 0.8–1.3 the "sweet spot", 1.3–1.5 elevated
+ * risk, ≥1.5 high risk. This is necessarily a simplified proxy for load (duration × a run-type-based
+ * effort factor, not a measured RPE or heart-rate-derived TRIMP) — a directional signal, not a
+ * clinical read on injury risk.
+ */
+export function computeTrainingLoad(dayEntries: Map<string, DayEntries>, asOfDate: Date = new Date()): TrainingLoad {
+  const asOfStr = localDateString(asOfDate);
+  let acute = 0;
+  let chronic = 0;
+  let seeded = false;
+  for (let i = ACWR_LOOKBACK_DAYS; i >= 0; i--) {
+    const load = dayLoad(dayEntries.get(addDaysLocal(asOfStr, -i)));
+    if (!seeded) {
+      acute = load;
+      chronic = load;
+      seeded = true;
+    } else {
+      acute = load * LAMBDA_ACUTE + acute * (1 - LAMBDA_ACUTE);
+      chronic = load * LAMBDA_CHRONIC + chronic * (1 - LAMBDA_CHRONIC);
+    }
+  }
+  const acwr = chronic > 0.01 ? acute / chronic : null;
+  return { acute, chronic, acwr, zone: acwr == null ? 'low' : classifyAcwr(acwr) };
+}
+
 /**
  * Weekly context for the run-editing form: what's already planned or done in the surrounding weeks,
  * so a new or edited run can be seen against the intensity around it. `draft` is the run as currently

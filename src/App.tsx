@@ -18,6 +18,7 @@ import {
   fromEvent,
   localDateString,
   newStep,
+  parseLocalDate,
   summarizeActualWeeks,
   summarizeCombinedWeeks,
   toEventInput,
@@ -70,6 +71,27 @@ export default function App() {
   const [mobileTab, setMobileTab] = useState<MobileTab>('today');
   const [goalVersion, setGoalVersion] = useState(0); // bumped to force a re-read of localStorage goals
   const calendarRef = useRef<CalendarViewHandle | null>(null);
+  const calBoxRef = useRef<HTMLDivElement | null>(null);
+  const [calHeight, setCalHeight] = useState<number | undefined>(undefined);
+
+  // On desktop (side-by-side layout) the side rail's top group (latest run / active week / weekly
+  // average) should end flush with the calendar box above the weekly-history list — so it's sized to
+  // match the calendar's own rendered height exactly (see the .side-top rule below for how the mileage
+  // chart then falls out of this for free, ending flush with the weekly-history list beneath it).
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1000px)');
+    const el = calBoxRef.current;
+    if (!el) return;
+    const update = () => setCalHeight(mq.matches ? calBoxRef.current?.getBoundingClientRect().height : undefined);
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    mq.addEventListener('change', update);
+    update();
+    return () => {
+      ro.disconnect();
+      mq.removeEventListener('change', update);
+    };
+  }, [signedIn, viewMode]);
 
   const handleError = useCallback((e: unknown) => {
     if (e instanceof AuthError) {
@@ -185,6 +207,15 @@ export default function App() {
   const todayWeekStart = weekKey(new Date(), FIRST_DAY);
   const shownWeekStart = activeWeekStart ?? todayWeekStart;
   const activeWeek = combinedWeeks.get(shownWeekStart) ?? emptyCombinedWeek(shownWeekStart);
+  // The training-load signal follows whichever week is active in the calendar: today's actual date
+  // when that's the current week (so it reflects a still-in-progress week correctly), otherwise the
+  // last day of that week (so browsing to a past/future week shows the load picture as it stood then).
+  const trainingLoadAsOfDate = useMemo(() => {
+    if (shownWeekStart === todayWeekStart) return new Date();
+    const d = parseLocalDate(shownWeekStart);
+    d.setDate(d.getDate() + 6);
+    return d;
+  }, [shownWeekStart, todayWeekStart]);
 
   const thisWeek = combinedWeeks.get(todayWeekStart) ?? emptyCombinedWeek(todayWeekStart);
   const prevWeekStart = addDaysLocal(todayWeekStart, -7);
@@ -276,7 +307,7 @@ export default function App() {
 
           <main>
             <div className="cal-col mobile-section section-calendar">
-              <div className="cal">
+              <div className="cal" ref={calBoxRef}>
                 <div className="cal-toolbar">
                   <h2 className="cal-title">Calendar</h2>
                   <div className="cal-toolbar-actions">
@@ -318,9 +349,11 @@ export default function App() {
               <WeeklyHistoryList weeks={actualWeeks} firstDay={FIRST_DAY} />
             </div>
             <div className="side mobile-section section-trends">
-              <LatestRunCard activity={latestActivity} onSelect={setSelectedActivity} />
-              <ActiveWeekCard week={activeWeek} />
-              <AverageStatsCard activities={activities} firstDay={FIRST_DAY} />
+              <div className="side-top" style={calHeight ? { height: calHeight } : undefined}>
+                <LatestRunCard activity={latestActivity} onSelect={setSelectedActivity} />
+                <ActiveWeekCard week={activeWeek} dayEntries={dayEntries} asOfDate={trainingLoadAsOfDate} />
+                <AverageStatsCard activities={activities} firstDay={FIRST_DAY} />
+              </div>
               <MileageChart weeks={combinedWeeks} endWeekStart={todayWeekStart} count={chartWeeks} onCountChange={setChartWeeks} firstDay={FIRST_DAY} />
             </div>
           </main>
