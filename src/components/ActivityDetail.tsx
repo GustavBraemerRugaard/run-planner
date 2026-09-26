@@ -196,112 +196,114 @@ export default function ActivityDetail({ activity, onClose }: Props) {
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>{activity.name}</h2>
-        <p className="fine">
-          {when.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })} ·{' '}
-          {when.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
-        </p>
-
-        <div className="totals activity-totals">
-          <div>
-            <span className="label">Distance</span>
-            <strong>{formatKm(d.distanceKm)} km</strong>
-          </div>
-          <div>
-            <span className="label">Time</span>
-            <strong>{formatDuration(d.movingTimeSec)}</strong>
-          </div>
-          <div>
-            <span className="label">Pace</span>
-            <strong>{d.paceSecPerKm ? `${formatPace(d.paceSecPerKm)}/km` : '—'}</strong>
-          </div>
-          {d.averageHeartRate != null && (
-            <div>
-              <span className="label">Avg HR</span>
-              <strong>{Math.round(d.averageHeartRate)} bpm</strong>
-            </div>
-          )}
-          {d.averageCadenceSpm != null && (
-            <div>
-              <span className="label">Cadence</span>
-              <strong>{Math.round(d.averageCadenceSpm)} spm</strong>
-            </div>
-          )}
-        </div>
-
-        {loading && <p className="fine">Loading laps…</p>}
-        {error && (
-          <p className="fine error" role="alert">
-            {error}
+      <div className="modal-wrap single" onClick={(e) => e.stopPropagation()}>
+        <div className="modal">
+          <h2>{activity.name}</h2>
+          <p className="fine">
+            {when.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })} ·{' '}
+            {when.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
           </p>
-        )}
 
-        {detail && detail.laps.length > 1 && (
-          <div className="lap-charts">
-            <div className="lap-chart-block">
-              <span className="label">Pace</span>
-              <LapChart
-                laps={detail.laps}
-                accessor={(l) => l.paceSecPerKm}
-                color="#0284c7"
-                invert
-                unitFmt={(v) => formatPace(v)}
-                axisStep={30}
-                axisPadding={16}
-              />
+          <div className="totals activity-totals">
+            <div>
+              <span className="label">Distance</span>
+              <strong>{formatKm(d.distanceKm)} km</strong>
             </div>
-            {detail.laps.some((l) => l.averageHeartRate != null) && (
-              <div className="lap-chart-block">
-                <span className="label">Heart Rate</span>
-                <LapChart
-                  laps={detail.laps}
-                  accessor={(l) => l.averageHeartRate}
-                  color="#ef4444"
-                  unitFmt={(v) => `${Math.round(v)} bpm`}
-                  axisStep={10}
-                  axisPadding={16}
-                />
+            <div>
+              <span className="label">Time</span>
+              <strong>{formatDuration(d.movingTimeSec)}</strong>
+            </div>
+            <div>
+              <span className="label">Pace</span>
+              <strong>{d.paceSecPerKm ? `${formatPace(d.paceSecPerKm)}/km` : '—'}</strong>
+            </div>
+            {d.averageHeartRate != null && (
+              <div>
+                <span className="label">Avg HR</span>
+                <strong>{Math.round(d.averageHeartRate)} bpm</strong>
+              </div>
+            )}
+            {d.averageCadenceSpm != null && (
+              <div>
+                <span className="label">Cadence</span>
+                <strong>{Math.round(d.averageCadenceSpm)} spm</strong>
               </div>
             )}
           </div>
-        )}
 
-        {detail && detail.laps.length > 0 && (
-          <div className="laps">
-            <span className="label">Laps</span>
-            <table className="laps-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Dist</th>
-                  <th>Time</th>
-                  <th>Pace</th>
-                  <th>HR</th>
-                  <th>Cad</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detail.laps.map((l) => (
-                  <tr key={l.index}>
-                    <td>{l.index}</td>
-                    <td>{formatKm(l.distanceKm)} km</td>
-                    <td>{formatDuration(l.movingTimeSec)}</td>
-                    <td>{l.paceSecPerKm ? formatPace(l.paceSecPerKm) : '—'}</td>
-                    <td>{l.averageHeartRate != null ? Math.round(l.averageHeartRate) : '—'}</td>
-                    <td>{l.averageCadenceSpm != null ? Math.round(l.averageCadenceSpm) : '—'}</td>
+          {loading && <p className="fine">Loading laps…</p>}
+          {error && (
+            <p className="fine error" role="alert">
+              {error}
+            </p>
+          )}
+
+          {detail && detail.laps.length > 1 && (
+            <div className="lap-charts">
+              <div className="lap-chart-block">
+                <span className="label">Pace</span>
+                <LapChart
+                  laps={detail.laps}
+                  accessor={(l) => l.paceSecPerKm}
+                  color="#0284c7"
+                  invert
+                  unitFmt={(v) => formatPace(v)}
+                  axisStep={30}
+                  axisPadding={16}
+                />
+              </div>
+              {detail.laps.some((l) => l.averageHeartRate != null) && (
+                <div className="lap-chart-block">
+                  <span className="label">Heart Rate</span>
+                  <LapChart
+                    laps={detail.laps}
+                    accessor={(l) => l.averageHeartRate}
+                    color="#ef4444"
+                    unitFmt={(v) => `${Math.round(v)} bpm`}
+                    axisStep={10}
+                    axisPadding={16}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {detail && detail.laps.length > 0 && (
+            <div className="laps">
+              <span className="label">Laps</span>
+              <table className="laps-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Dist</th>
+                    <th>Time</th>
+                    <th>Pace</th>
+                    <th>HR</th>
+                    <th>Cad</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {detail.laps.map((l) => (
+                    <tr key={l.index}>
+                      <td>{l.index}</td>
+                      <td>{formatKm(l.distanceKm)} km</td>
+                      <td>{formatDuration(l.movingTimeSec)}</td>
+                      <td>{l.paceSecPerKm ? formatPace(l.paceSecPerKm) : '—'}</td>
+                      <td>{l.averageHeartRate != null ? Math.round(l.averageHeartRate) : '—'}</td>
+                      <td>{l.averageCadenceSpm != null ? Math.round(l.averageCadenceSpm) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
-        <div className="actions">
-          <span className="spacer" />
-          <button type="button" className="btn" onClick={onClose}>
-            Close
-          </button>
+          <div className="actions">
+            <span className="spacer" />
+            <button type="button" className="btn" onClick={onClose}>
+              Close
+            </button>
+          </div>
         </div>
       </div>
     </div>

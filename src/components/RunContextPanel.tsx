@@ -2,6 +2,10 @@ import { ACTUAL_COLOR, RUN_TYPES, RUN_TYPE_ORDER, formatKm, parseLocalDate, type
 
 interface Props {
   context: RunFormWeekContext;
+  /** Desktop only: pixel height of the sibling run-form box to match exactly (scrolling internally
+   * if this panel's own content is taller), so the two boxes always end at the same edge instead of
+   * the shorter one stretching to fill the taller one's height. Undefined below that breakpoint. */
+  matchHeight?: number;
 }
 
 const dayFmt = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
@@ -37,7 +41,7 @@ function DayRow({ date, entries, isDraftDate }: { date: string; entries: WeekEnt
  * runs, this week's total distance, the trailing 7-day rolling total, and this week's run-type mix —
  * so you can see how the run you're adding or editing fits into the surrounding period.
  */
-export default function RunContextPanel({ context }: Props) {
+export default function RunContextPanel({ context, matchHeight }: Props) {
   const byDate = (entries: WeekEntry[]) => {
     const map = new Map<string, WeekEntry[]>();
     for (const e of entries) map.set(e.date, [...(map.get(e.date) ?? []), e]);
@@ -48,7 +52,7 @@ export default function RunContextPanel({ context }: Props) {
   const maxType = Math.max(1, ...RUN_TYPE_ORDER.map((t) => context.currentWeekByType[t] ?? 0));
 
   return (
-    <div className="form-context">
+    <div className="form-context" style={matchHeight ? { maxHeight: matchHeight } : undefined}>
       <div className="form-context-stats">
         <div>
           <span className="label">This week</span>

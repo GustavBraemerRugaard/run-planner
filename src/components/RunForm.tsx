@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import StepEditor, { newMainStep } from './StepEditor';
 import RunContextPanel from './RunContextPanel';
 import DateField from './DateField';
@@ -39,6 +39,26 @@ export default function RunForm({ run, dayEntries, firstDay, saving, onSave, onD
   );
   const [description, setDescription] = useState(run.description);
   const [descTouched, setDescTouched] = useState(run.description !== run.autoDescription);
+  const modalRef = useRef<HTMLFormElement | null>(null);
+  const [matchHeight, setMatchHeight] = useState<number | undefined>(undefined);
+
+  // On desktop (side-by-side layout) the context panel should match this form's own height exactly
+  // — not stretch the form to match the panel's, which left dead space below the form's buttons.
+  // Below that breakpoint the two boxes stack, so no matching is applied there.
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 900px)');
+    const el = modalRef.current;
+    if (!el) return;
+    const update = () => setMatchHeight(mq.matches ? modalRef.current?.getBoundingClientRect().height : undefined);
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    mq.addEventListener('change', update);
+    update();
+    return () => {
+      ro.disconnect();
+      mq.removeEventListener('change', update);
+    };
+  }, []);
 
   const steps = useMemo(
     () => [...(warmup ? [warmup] : []), ...mainSteps, ...(cooldown ? [cooldown] : [])],
@@ -80,7 +100,7 @@ export default function RunForm({ run, dayEntries, firstDay, saving, onSave, onD
   return (
     <div className="modal-backdrop" onClick={onCancel}>
       <div className="modal-wrap" onClick={(e) => e.stopPropagation()}>
-        <form className="modal" onSubmit={submit}>
+        <form className="modal" ref={modalRef} onSubmit={submit}>
           <h2>{run.id ? 'Edit run' : 'New run'}</h2>
 
           <div className="field">
@@ -108,23 +128,21 @@ export default function RunForm({ run, dayEntries, firstDay, saving, onSave, onD
           <div className="field">
             <div className="steps-head">
               <span className="label">Steps</span>
-              <div className="steps-toggles">
-                <label className="check small">
-                  <input
-                    type="checkbox"
-                    checked={!!warmup}
-                    onChange={(e) => setWarmup(e.target.checked ? newStep('warmup') : null)}
-                  />
+              <div className="seg-toggle">
+                <button
+                  type="button"
+                  className={warmup ? 'active' : ''}
+                  onClick={() => setWarmup(warmup ? null : newStep('warmup'))}
+                >
                   Warm-up
-                </label>
-                <label className="check small">
-                  <input
-                    type="checkbox"
-                    checked={!!cooldown}
-                    onChange={(e) => setCooldown(e.target.checked ? newStep('cooldown') : null)}
-                  />
+                </button>
+                <button
+                  type="button"
+                  className={cooldown ? 'active' : ''}
+                  onClick={() => setCooldown(cooldown ? null : newStep('cooldown'))}
+                >
                   Cool-down
-                </label>
+                </button>
               </div>
             </div>
 
@@ -213,7 +231,7 @@ export default function RunForm({ run, dayEntries, firstDay, saving, onSave, onD
           </div>
         </form>
 
-        <RunContextPanel context={formContext} />
+        <RunContextPanel context={formContext} matchHeight={matchHeight} />
       </div>
     </div>
   );

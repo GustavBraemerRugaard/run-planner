@@ -3,6 +3,7 @@ import RunForm from './components/RunForm';
 import ActiveWeekCard from './components/ActiveWeekCard';
 import TodayCard from './components/TodayCard';
 import MileageChart from './components/MileageChart';
+import GoogleButton from './components/GoogleButton';
 import StravaButton from './components/StravaButton';
 import RollingCalendar, { type CalendarViewHandle } from './components/RollingCalendar';
 import ListView from './components/ListView';
@@ -38,8 +39,6 @@ import {
 type ViewMode = 'list' | 'month';
 type MobileTab = 'today' | 'calendar' | 'trends';
 
-const NARROW_PX = 700;
-const isNarrow = () => window.innerWidth < NARROW_PX;
 const notConfigured = GOOGLE_CLIENT_ID.startsWith('PASTE_') || CALENDAR_ID.startsWith('PASTE_');
 const GOOGLE_PAST_MONTHS = 6;
 const GOOGLE_FUTURE_MONTHS = 3;
@@ -59,7 +58,7 @@ export default function App() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [stravaConnected, setStravaConnected] = useState(isStravaConnected());
   const [activities, setActivities] = useState<StravaActivity[]>([]);
-  const [viewMode, setViewMode] = useState<ViewMode>(() => (isNarrow() ? 'list' : 'month'));
+  const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [chartWeeks, setChartWeeks] = useState(DEFAULT_CHART_WEEKS);
   const [loading, setLoading] = useState(false);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
@@ -198,26 +197,38 @@ export default function App() {
       <header className="topbar">
         <h1>Run Planner</h1>
         <div className="topbar-actions">
-          <StravaButton
-            connected={stravaConnected}
-            onDisconnected={() => {
-              setStravaConnected(false);
-              setActivities([]);
-            }}
-          />
-          {signedIn && (
-            <>
-              <button className="btn primary" onClick={() => setEditing(blankRun(localDateString(new Date())))}>
-                + Add run
-              </button>
-              <button className="btn" onClick={refresh} disabled={loading || activitiesLoading}>
-                {loading || activitiesLoading ? 'Loading…' : 'Refresh'}
-              </button>
-              <button className="btn" onClick={onSignOut}>
-                Sign out
-              </button>
-            </>
-          )}
+          <div className="topbar-action-group">
+            <GoogleButton signedIn={signedIn} disabled={notConfigured} onSignIn={() => void onSignIn()} onSignOut={onSignOut} />
+            <StravaButton
+              connected={stravaConnected}
+              onDisconnected={() => {
+                setStravaConnected(false);
+                setActivities([]);
+              }}
+            />
+            {signedIn && (
+              <>
+                <button
+                  type="button"
+                  className="primary"
+                  title="Add run"
+                  aria-label="Add run"
+                  onClick={() => setEditing(blankRun(localDateString(new Date())))}
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  title={loading || activitiesLoading ? 'Loading…' : 'Refresh'}
+                  aria-label="Refresh"
+                  onClick={refresh}
+                  disabled={loading || activitiesLoading}
+                >
+                  <span className={loading || activitiesLoading ? 'spinning' : ''}>⟳</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -239,15 +250,14 @@ export default function App() {
         </div>
       )}
 
-      {!signedIn ? (
-        <main className="signin">
-          <p>Sign in with Google to load and edit the runs in your “Løb” calendar.</p>
-          <button className="btn primary big" onClick={() => void onSignIn()} disabled={notConfigured}>
-            Sign in with Google
-          </button>
-          <p className="fine">Only calendar events are accessed, and only the Løb calendar is used. The sign-in lasts about an hour.</p>
-        </main>
-      ) : (
+      {!signedIn && !notConfigured && (
+        <div className="notice">
+          Sign in with Google (top right) to load and edit the runs in your “Løb” calendar. Only calendar events are
+          accessed, and only the Løb calendar is used — the sign-in lasts about an hour.
+        </div>
+      )}
+
+      {signedIn && (
         <>
           <section className="mobile-section section-today">
             <TodayCard
@@ -274,11 +284,11 @@ export default function App() {
                       Today
                     </button>
                     <div className="view-toggle">
-                      <button className={viewMode === 'list' ? 'active' : ''} onClick={() => setViewMode('list')}>
-                        List
-                      </button>
                       <button className={viewMode === 'month' ? 'active' : ''} onClick={() => setViewMode('month')}>
                         Month
+                      </button>
+                      <button className={viewMode === 'list' ? 'active' : ''} onClick={() => setViewMode('list')}>
+                        List
                       </button>
                     </div>
                   </div>

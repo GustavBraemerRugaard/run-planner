@@ -15,8 +15,9 @@ export default function ActiveWeekCard({ week }: { week: CombinedWeekSummary }) 
 
   return (
     <section className="active-week">
+      <span className="label title">Active week</span>
       <div className="active-week-head">
-        <span className="label">
+        <span className="fine">
           {fmt(start)} – {fmt(end)}
         </span>
         <strong>{formatKm(week.totalKm)} km</strong>

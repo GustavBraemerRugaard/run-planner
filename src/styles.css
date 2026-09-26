@@ -50,18 +50,39 @@ body {
 .app { max-width: 1200px; margin: 0 auto; padding: 12px; }
 
 /* Matches main's own two-column split (1fr content + 300px side rail) at the same breakpoint, so
-   the action buttons occupy exactly the same column as the side widgets below and their outer
-   edges land flush with the widgets' borders. */
+   the action toolbar occupies exactly the same column as the side widgets below and its outer edges
+   land flush with the widgets' borders. */
 .topbar { display: grid; grid-template-columns: 1fr; align-items: center; gap: 8px; margin-bottom: 12px; }
 .topbar h1 { font-size: 1.25rem; margin: 0; text-transform: uppercase; letter-spacing: 0.04em; }
-.topbar-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.topbar-actions { display: flex; align-items: center; }
 @media (min-width: 1000px) {
   .topbar { grid-template-columns: 1fr 300px; }
-  .topbar-actions { justify-content: space-between; }
+}
+
+/* The whole account/action cluster is one segmented toolbar — same visual language as the other
+   segmented toggles in the app (.seg-toggle, .view-toggle, etc.) — instead of several separate
+   buttons of mismatched shapes. Each segment is icon-only (a single letter for the two connection
+   toggles, a symbol for add/refresh); the full meaning is in each button's title/aria-label. Always
+   full width of its container, so on desktop it spans exactly the 300px side-rail column above. */
+.topbar-action-group {
+  display: flex; width: 100%; border: 1px solid var(--border); border-radius: 2px; overflow: hidden;
+}
+.topbar-action-group > button {
+  flex: 1; font: inherit; font-size: 0.95rem; font-weight: 700; padding: 9px 4px; border: none;
+  border-left: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.topbar-action-group > button:first-child { border-left: none; }
+.topbar-action-group > button.primary { background: var(--accent); color: var(--accent-text); }
+.topbar-action-group > button:disabled { opacity: 0.55; cursor: default; }
+.topbar-action-group .spinning { display: inline-block; animation: spin 0.8s linear infinite; }
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .btn {
-  font: inherit; font-size: 0.95rem; padding: 9px 14px; border-radius: 2px; cursor: pointer;
+  font: inherit; font-size: 0.95rem; padding: 9px 14px; border-radius: 2px; cursor: pointer; white-space: nowrap;
   border: 1px solid var(--border); background: var(--panel); color: var(--text);
 }
 .btn:disabled { opacity: 0.55; cursor: default; }
@@ -73,18 +94,25 @@ body {
 .notice.error { background: color-mix(in srgb, var(--danger) 16%, var(--panel)); }
 code { background: var(--border); padding: 1px 5px; border-radius: 2px; }
 
-.signin { text-align: center; padding: 48px 12px; }
-.signin .fine { color: var(--muted); font-size: 0.85rem; max-width: 420px; margin: 18px auto 0; }
-
 .fine { color: var(--muted); font-size: 0.85rem; margin: 6px 0; }
 .fine.error { color: var(--danger); }
 
 .section-today { margin-bottom: var(--sp-4); }
 
 main { display: grid; gap: 16px; grid-template-columns: 1fr; }
-@media (min-width: 1000px) { main { grid-template-columns: 1fr 300px; align-items: start; } }
 .side { display: grid; gap: 16px; }
 .cal-col { display: grid; gap: 16px; min-width: 0; }
+@media (min-width: 1000px) {
+  /* On desktop the side rail should end flush with the calendar/weekly-history column below it:
+     stretch .side to match main's row height, then let its last card (the mileage chart) absorb the
+     leftover space. flex-basis must stay "auto" (not the bare `flex: 1` shorthand's 0%), or the
+     narrower single-column layout below — where .side is a plain content-sized grid, not a stretched
+     flex column — sees the chart's intrinsic height collapse toward zero. */
+  main { grid-template-columns: 1fr 300px; align-items: stretch; }
+  .side { display: flex; flex-direction: column; }
+  .side > .chart-card:last-child { flex: 1 1 auto; display: flex; flex-direction: column; }
+  .side > .chart-card:last-child .chart-plot { flex: 1 1 auto; }
+}
 
 /* The "today / this week at a glance" card: a next-run line, this week's total (vs. goal or last
    week), and the run-type mix — always visible up top on desktop, and its own tab on phone. */
@@ -100,6 +128,7 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .today-line:disabled { cursor: default; }
 .today-dot { width: 10px; height: 10px; border-radius: 2px; flex: none; }
 .today-sub { color: var(--muted); font-size: var(--fs-caption); font-weight: 400; }
+.today-week { padding-left: 18px; }
 .today-week-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-1); }
 .today-week-total strong { font-size: var(--fs-value-lg); }
 .today-bar { margin-top: var(--sp-1); }
@@ -148,17 +177,23 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .avg-stats-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.85rem; }
 .avg-stats-row span { color: var(--muted); }
 
-.active-week-head { display: flex; justify-content: space-between; font-size: 0.9rem; }
+.active-week-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.9rem; margin-top: 4px; }
 .summary-sub { color: var(--muted); font-size: 0.8rem; margin-top: 3px; }
 .bar { display: flex; height: 10px; border-radius: 2px; background: var(--border); overflow: hidden; margin-top: 5px; }
 .bar span { display: block; height: 100%; }
 
 /* Weekly mileage chart */
 .chart-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.weeks-input { display: flex; align-items: center; gap: 5px; font-size: var(--fs-label); color: var(--muted); }
-.weeks-input input {
-  width: 46px; font: inherit; font-size: 13px; padding: 3px 5px; border-radius: 2px;
-  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+.weeks-input { display: flex; align-items: center; gap: 6px; font-size: var(--fs-label); color: var(--muted); }
+.weeks-stepper { display: inline-flex; align-items: stretch; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
+.weeks-stepper button {
+  font: inherit; font-size: 12px; padding: 3px 8px; border: none; background: var(--panel);
+  color: var(--text); cursor: pointer; line-height: 1.6;
+}
+.weeks-stepper button:disabled { opacity: 0.4; cursor: default; }
+.weeks-value {
+  padding: 3px 8px; font-size: 13px; color: var(--text); border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border); display: flex; align-items: center; font-variant-numeric: tabular-nums;
 }
 .chart-plot { position: relative; margin: 18px 2px 6px; }
 .chart-gridline { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--border); }
@@ -168,12 +203,12 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .chart-bars { position: absolute; top: 0; bottom: 0; left: 0; right: 34px; display: flex; align-items: flex-end; gap: 2px; }
 .chart-bar-col { flex: 1; height: 100%; display: flex; align-items: flex-end; min-width: 3px; }
 .chart-bar { width: 100%; display: flex; flex-direction: column-reverse; border-radius: 0; overflow: hidden; min-height: 1px; }
-.chart-bar.current { outline: 2px solid var(--accent); outline-offset: 1px; }
+.chart-bar.current { border: 2px solid var(--accent); }
 .chart-bar span { display: block; width: 100%; }
 
 /* View toggle */
 .cal-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.cal-title { margin: 0; font-size: 1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.cal-title { margin: 0; font-size: var(--fs-label); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
 .cal-toolbar-actions { display: flex; align-items: center; gap: 8px; }
 .view-toggle { display: flex; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
 .view-toggle button {
@@ -294,8 +329,16 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .modal h2 { margin: 0; font-size: 1.15rem; text-transform: uppercase; letter-spacing: 0.04em; }
 
 @media (min-width: 900px) {
-  .modal-wrap { max-width: 860px; flex-direction: row; align-items: flex-start; }
+  /* align-items stays at its flex-start default here (not stretch): the form's own content should
+     decide the box height, with the context panel matched to it in JS (RunForm measures the form
+     and passes that height down) and scrolling internally if its own content is taller. Stretching
+     the row to the taller sibling's height left dead space below the shorter form's buttons. */
+  .modal-wrap { max-width: 860px; flex-direction: row; }
   .modal-wrap .modal { flex: 1 1 480px; max-width: 480px; }
+  /* Single-panel popups (e.g. the run-detail view) use the same overall box — width and height — as
+     the two-panel edit/create-run box, rather than each popup picking its own size. */
+  .modal-wrap.single { max-width: 860px; }
+  .modal-wrap.single .modal { flex: 1 1 auto; max-width: none; }
 }
 
 /* Run-form context panel: what's already planned/done around the run being edited. */
@@ -352,7 +395,6 @@ textarea { resize: vertical; }
   position: absolute; inset: auto 0 0 auto; width: 1px !important; height: 1px; padding: 0;
   border: none; opacity: 0; pointer-events: none;
 }
-.check { display: flex; gap: 8px; align-items: center; font-size: 0.95rem; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
@@ -365,10 +407,8 @@ textarea { resize: vertical; }
 .spacer { flex: 1; }
 
 .btn.small { font-size: 0.8rem; padding: 5px 10px; border-radius: 2px; width: fit-content; }
-.check.small { font-size: 0.82rem; gap: 5px; }
 
 .steps-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
-.steps-toggles { display: flex; gap: 12px; }
 .steps { display: grid; gap: 6px; margin-bottom: 8px; }
 
 .step-row {

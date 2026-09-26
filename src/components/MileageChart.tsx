@@ -45,20 +45,19 @@ export default function MileageChart({ weeks, endWeekStart, count, onCountChange
     <section className="chart-card">
       <div className="chart-head">
         <span className="label title">Weekly mileage</span>
-        <label className="weeks-input">
-          last
-          <input
-            type="number"
-            min={4}
-            max={52}
-            value={count}
-            onChange={(e) => {
-              const n = parseInt(e.target.value, 10);
-              if (Number.isFinite(n)) onCountChange(Math.min(52, Math.max(4, n)));
-            }}
-          />
-          weeks
-        </label>
+        <div className="weeks-input">
+          <span>last</span>
+          <div className="weeks-stepper">
+            <button type="button" onClick={() => onCountChange(Math.max(4, count - 1))} disabled={count <= 4} aria-label="Fewer weeks">
+              −
+            </button>
+            <span className="weeks-value">{count}</span>
+            <button type="button" onClick={() => onCountChange(Math.min(52, count + 1))} disabled={count >= 52} aria-label="More weeks">
+              +
+            </button>
+          </div>
+          <span>weeks</span>
+        </div>
       </div>
 
       <div className="chart-plot" style={{ height: CHART_HEIGHT }}>
