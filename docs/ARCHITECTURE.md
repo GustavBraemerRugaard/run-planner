@@ -173,12 +173,16 @@ widget when an existing token already means the same thing.
   `≥900px` rule) — always gate this kind of JS sizing behind the same `matchMedia` breakpoint used by
   the corresponding CSS rule, and disable it (pass `undefined`) below that breakpoint so mobile's
   natural, content-sized stacking isn't overridden.
-- **Scrollable-but-no-visible-scrollbar** (`.no-scrollbar` in `styles.css`, applied to `.rolling-cal-body`,
-  `.list-view`, `.week-history-list`, and `.form-context`): every internally-scrolling panel in the app
-  keeps its scroll behavior (`overflow-y: auto`/`scroll`) but hides the scroll handle itself
-  (`scrollbar-width: none` + a `::-webkit-scrollbar { display: none }` override), rather than showing a
-  native scrollbar. A new scrollable panel should join this same shared rule instead of introducing its
-  own scrollbar-hiding CSS or, worse, leaving its scrollbar visible.
+- **No scrollbar handles, anywhere, ever** — an explicit, standing requirement, not just a style
+  preference for a few specific panels. In `styles.css` this is one universal rule (`* { scrollbar-width:
+  none; -ms-overflow-style: none; } *::-webkit-scrollbar { display: none; }`), deliberately applied to
+  every element rather than an enumerated list of "known" scrollable selectors — every internally-
+  scrolling panel (`.rolling-cal-body`, `.list-view`, `.week-history-list`, `.form-context`, both
+  modals' `.modal`, `.side-top`, and anything added later) keeps its actual scroll behavior
+  (`overflow-y: auto`/`scroll`), just never shows the handle. **Never re-introduce a visible scrollbar
+  anywhere in this app**, and don't narrow this back down to a per-selector list — the universal rule
+  exists specifically so a newly-added scrollable element is covered automatically, with nothing to
+  remember to add.
 
 ## Breakpoints (all defined in `styles.css`, not per-component)
 

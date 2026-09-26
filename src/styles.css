@@ -178,12 +178,13 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
   .app.mobile-tab-trends .section-trends { display: grid; }
 }
 
-/* Scrollable panels keep their scroll but never show a scrollbar. */
-.no-scrollbar, .rolling-cal-body, .list-view, .week-history-list, .form-context {
-  scrollbar-width: none; -ms-overflow-style: none;
-}
-.no-scrollbar::-webkit-scrollbar, .rolling-cal-body::-webkit-scrollbar,
-.list-view::-webkit-scrollbar, .week-history-list::-webkit-scrollbar, .form-context::-webkit-scrollbar { display: none; }
+/* Nothing in this app ever shows a scrollbar handle — scrolling still works everywhere it needs to
+   (.rolling-cal-body, .list-view, .week-history-list, .form-context, the modals, .side-top, and any
+   future scrollable element), just without a visible scroll handle. Applied universally (not to an
+   enumerated list of "known" scrollable selectors) specifically so this never needs revisiting when a
+   new scrollable panel is added later. */
+* { scrollbar-width: none; -ms-overflow-style: none; }
+*::-webkit-scrollbar { display: none; }
 
 .cal, .active-week, .chart-card, .avg-stats { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
 .avg-stats-head { display: flex; justify-content: space-between; align-items: center; }
