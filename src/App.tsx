@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import RunForm from './components/RunForm';
 import ActiveWeekCard from './components/ActiveWeekCard';
+import TodayCard from './components/TodayCard';
 import MileageChart from './components/MileageChart';
-import StravaPanel from './components/StravaPanel';
+import StravaButton from './components/StravaButton';
 import RollingCalendar, { type CalendarViewHandle } from './components/RollingCalendar';
 import ListView from './components/ListView';
 import ActivityDetail from './components/ActivityDetail';
@@ -11,6 +12,7 @@ import WeeklyHistoryList from './components/WeeklyHistoryList';
 import AverageStatsCard from './components/AverageStatsCard';
 import { CALENDAR_ID, DEFAULT_CHART_WEEKS, FIRST_DAY, GOOGLE_CLIENT_ID } from './config';
 import {
+  addDaysLocal,
   buildDayEntries,
   fromEvent,
   localDateString,
@@ -24,14 +26,17 @@ import {
 } from './domain/run';
 import { hasValidToken, signIn, signOut } from './lib/auth';
 import { AuthError, deleteEvent, insertEvent, listEvents, patchEvent } from './lib/calendar';
+import { getWeekGoalKm, setWeekGoalKm } from './lib/goals';
 import {
   handleRedirect as handleStravaRedirect,
+  isConfigured as isStravaConfigured,
   isConnected as isStravaConnected,
   listActivities,
   type StravaActivity,
 } from './lib/strava';
 
 type ViewMode = 'list' | 'month';
+type MobileTab = 'today' | 'calendar' | 'trends';
 
 const NARROW_PX = 700;
 const isNarrow = () => window.innerWidth < NARROW_PX;
@@ -63,6 +68,8 @@ export default function App() {
   const [editing, setEditing] = useState<Run | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<StravaActivity | null>(null);
   const [activeWeekStart, setActiveWeekStart] = useState<string | null>(null);
+  const [mobileTab, setMobileTab] = useState<MobileTab>('today');
+  const [goalVersion, setGoalVersion] = useState(0); // bumped to force a re-read of localStorage goals
   const calendarRef = useRef<CalendarViewHandle | null>(null);
 
   const handleError = useCallback((e: unknown) => {
@@ -180,11 +187,24 @@ export default function App() {
   const shownWeekStart = activeWeekStart ?? todayWeekStart;
   const activeWeek = combinedWeeks.get(shownWeekStart) ?? emptyCombinedWeek(shownWeekStart);
 
+  const thisWeek = combinedWeeks.get(todayWeekStart) ?? emptyCombinedWeek(todayWeekStart);
+  const prevWeekStart = addDaysLocal(todayWeekStart, -7);
+  const prevWeekTotalKm = (combinedWeeks.get(prevWeekStart) ?? emptyCombinedWeek(prevWeekStart)).totalKm;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const weekGoalKm = useMemo(() => getWeekGoalKm(todayWeekStart), [todayWeekStart, goalVersion]);
+
   return (
-    <div className="app">
+    <div className={`app mobile-tab-${mobileTab}`}>
       <header className="topbar">
         <h1>Run Planner</h1>
         <div className="topbar-actions">
+          <StravaButton
+            connected={stravaConnected}
+            onDisconnected={() => {
+              setStravaConnected(false);
+              setActivities([]);
+            }}
+          />
           {signedIn && (
             <>
               <button className="btn primary" onClick={() => setEditing(blankRun(localDateString(new Date())))}>
@@ -207,20 +227,17 @@ export default function App() {
           (see README).
         </div>
       )}
+      {!isStravaConfigured() && (
+        <div className="notice">
+          Strava not set up yet: fill in <code>STRAVA_CLIENT_ID</code> and <code>STRAVA_WORKER_URL</code> in{' '}
+          <code>src/config.ts</code> (see README, "Strava setup").
+        </div>
+      )}
       {error && (
         <div className="notice error" role="alert">
           {error}
         </div>
       )}
-
-      <StravaPanel
-        connected={stravaConnected}
-        loading={activitiesLoading}
-        onDisconnected={() => {
-          setStravaConnected(false);
-          setActivities([]);
-        }}
-      />
 
       {!signedIn ? (
         <main className="signin">
@@ -231,62 +248,93 @@ export default function App() {
           <p className="fine">Only calendar events are accessed, and only the Løb calendar is used. The sign-in lasts about an hour.</p>
         </main>
       ) : (
-        <main>
-          <div className="cal-col">
-            <div className="cal">
-              <div className="cal-toolbar">
-                <h2 className="cal-title">Calendar</h2>
-                <div className="cal-toolbar-actions">
-                  <button type="button" className="btn small" onClick={() => calendarRef.current?.scrollToToday()}>
-                    Today
-                  </button>
-                  <div className="view-toggle">
-                    <button className={viewMode === 'list' ? 'active' : ''} onClick={() => setViewMode('list')}>
-                      List
+        <>
+          <section className="mobile-section section-today">
+            <TodayCard
+              dayEntries={dayEntries}
+              thisWeek={thisWeek}
+              prevWeekTotalKm={prevWeekTotalKm}
+              goalKm={weekGoalKm}
+              onSetGoal={(km) => {
+                setWeekGoalKm(todayWeekStart, km);
+                setGoalVersion((v) => v + 1);
+              }}
+              onSelectActivity={(a) => setSelectedActivity(a)}
+              onSelectDate={(date) => setEditing(blankRun(date))}
+            />
+          </section>
+
+          <main>
+            <div className="cal-col mobile-section section-calendar">
+              <div className="cal">
+                <div className="cal-toolbar">
+                  <h2 className="cal-title">Calendar</h2>
+                  <div className="cal-toolbar-actions">
+                    <button type="button" className="btn small" onClick={() => calendarRef.current?.scrollToToday()}>
+                      Today
                     </button>
-                    <button className={viewMode === 'month' ? 'active' : ''} onClick={() => setViewMode('month')}>
-                      Month
-                    </button>
+                    <div className="view-toggle">
+                      <button className={viewMode === 'list' ? 'active' : ''} onClick={() => setViewMode('list')}>
+                        List
+                      </button>
+                      <button className={viewMode === 'month' ? 'active' : ''} onClick={() => setViewMode('month')}>
+                        Month
+                      </button>
+                    </div>
                   </div>
                 </div>
+                {viewMode === 'month' ? (
+                  <RollingCalendar
+                    ref={calendarRef}
+                    dayEntries={dayEntries}
+                    firstDay={FIRST_DAY}
+                    onSelectDate={(date) => setEditing(blankRun(date))}
+                    onSelectRun={(run) => setEditing(run)}
+                    onSelectActivity={(a) => setSelectedActivity(a)}
+                    onVisibleWeekChange={setActiveWeekStart}
+                  />
+                ) : (
+                  <ListView
+                    ref={calendarRef}
+                    dayEntries={dayEntries}
+                    firstDay={FIRST_DAY}
+                    onSelectDate={(date) => setEditing(blankRun(date))}
+                    onSelectRun={(run) => setEditing(run)}
+                    onSelectActivity={(a) => setSelectedActivity(a)}
+                    onVisibleWeekChange={setActiveWeekStart}
+                  />
+                )}
               </div>
-              {viewMode === 'month' ? (
-                <RollingCalendar
-                  ref={calendarRef}
-                  dayEntries={dayEntries}
-                  firstDay={FIRST_DAY}
-                  onSelectDate={(date) => setEditing(blankRun(date))}
-                  onSelectRun={(run) => setEditing(run)}
-                  onSelectActivity={(a) => setSelectedActivity(a)}
-                  onVisibleWeekChange={setActiveWeekStart}
-                />
-              ) : (
-                <ListView
-                  ref={calendarRef}
-                  dayEntries={dayEntries}
-                  firstDay={FIRST_DAY}
-                  onSelectDate={(date) => setEditing(blankRun(date))}
-                  onSelectRun={(run) => setEditing(run)}
-                  onSelectActivity={(a) => setSelectedActivity(a)}
-                  onVisibleWeekChange={setActiveWeekStart}
-                />
-              )}
+              <WeeklyHistoryList weeks={actualWeeks} firstDay={FIRST_DAY} />
             </div>
-            <WeeklyHistoryList weeks={actualWeeks} firstDay={FIRST_DAY} />
-          </div>
-          <div className="side">
-            <LatestRunCard activity={latestActivity} onSelect={setSelectedActivity} />
-            <ActiveWeekCard week={activeWeek} />
-            <AverageStatsCard activities={activities} firstDay={FIRST_DAY} />
-            <MileageChart weeks={combinedWeeks} endWeekStart={todayWeekStart} count={chartWeeks} onCountChange={setChartWeeks} firstDay={FIRST_DAY} />
-          </div>
-        </main>
+            <div className="side mobile-section section-trends">
+              <LatestRunCard activity={latestActivity} onSelect={setSelectedActivity} />
+              <ActiveWeekCard week={activeWeek} />
+              <AverageStatsCard activities={activities} firstDay={FIRST_DAY} />
+              <MileageChart weeks={combinedWeeks} endWeekStart={todayWeekStart} count={chartWeeks} onCountChange={setChartWeeks} firstDay={FIRST_DAY} />
+            </div>
+          </main>
+
+          <nav className="mobile-tabbar">
+            <button type="button" className={mobileTab === 'today' ? 'active' : ''} onClick={() => setMobileTab('today')}>
+              Today
+            </button>
+            <button type="button" className={mobileTab === 'calendar' ? 'active' : ''} onClick={() => setMobileTab('calendar')}>
+              Calendar
+            </button>
+            <button type="button" className={mobileTab === 'trends' ? 'active' : ''} onClick={() => setMobileTab('trends')}>
+              Trends
+            </button>
+          </nav>
+        </>
       )}
 
       {editing && (
         <RunForm
           key={editing.id ?? 'new'}
           run={editing}
+          dayEntries={dayEntries}
+          firstDay={FIRST_DAY}
           saving={saving}
           onSave={(r) => void save(r)}
           onDelete={(r) => void remove(r)}

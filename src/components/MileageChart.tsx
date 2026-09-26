@@ -44,7 +44,7 @@ export default function MileageChart({ weeks, endWeekStart, count, onCountChange
   return (
     <section className="chart-card">
       <div className="chart-head">
-        <span className="label">Weekly mileage</span>
+        <span className="label title">Weekly mileage</span>
         <label className="weeks-input">
           last
           <input

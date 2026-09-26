@@ -75,6 +75,32 @@ function NumberField({
   );
 }
 
+/** A small segmented toggle button group — used everywhere in place of a <select> dropdown. */
+function ToggleGroup<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <span className="seg-toggle">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          className={o.value === value ? 'active' : ''}
+          onClick={() => onChange(o.value)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </span>
+  );
+}
+
 /** One row: reps x distance @ pace (rest), or for WU/CD just distance @ pace. Distance can be entered in km or m. */
 export default function StepEditor({ step, allowReps, onChange, onRemove }: Props) {
   const [distUnit, setDistUnit] = useState<'km' | 'm'>('km');
@@ -82,11 +108,13 @@ export default function StepEditor({ step, allowReps, onChange, onRemove }: Prop
 
   const restType: RestType = step.rest?.type ?? 'distance';
   const restValue = step.rest?.value;
+  const restPace = step.rest?.paceSecPerKm ?? null;
 
   function setRest(patch: Partial<Rest>) {
     const type = patch.type ?? restType;
     const value = patch.value ?? restValue;
-    set({ rest: value != null && value > 0 ? { type, value } : null });
+    const paceSecPerKm = patch.paceSecPerKm !== undefined ? patch.paceSecPerKm : restPace;
+    set({ rest: value != null && value > 0 ? { type, value, paceSecPerKm } : null });
   }
 
   const displayDistance = distUnit === 'km' ? step.distanceKm : step.distanceKm * 1000;
@@ -110,10 +138,14 @@ export default function StepEditor({ step, allowReps, onChange, onRemove }: Prop
         placeholder="0"
         onChange={(v) => set({ distanceKm: v === '' ? 0 : distUnit === 'km' ? v : v / 1000 })}
       />
-      <select className="step-unit-select" value={distUnit} onChange={(e) => setDistUnit(e.target.value as 'km' | 'm')}>
-        <option value="km">km</option>
-        <option value="m">m</option>
-      </select>
+      <ToggleGroup
+        options={[
+          { value: 'km', label: 'km' },
+          { value: 'm', label: 'm' },
+        ]}
+        value={distUnit}
+        onChange={setDistUnit}
+      />
       <span className="step-at">@</span>
       <input
         className="step-pace"
@@ -128,16 +160,35 @@ export default function StepEditor({ step, allowReps, onChange, onRemove }: Prop
 
       {allowReps && step.reps > 1 && (
         <span className="step-rest">
+          <span className="step-rest-mode">
+            <ToggleGroup
+              options={[
+                { value: 'distance', label: 'Dist' },
+                { value: 'time', label: 'Time' },
+              ]}
+              value={restType}
+              onChange={(type) => setRest({ type })}
+            />
+          </span>
           <NumberField
             width={52}
             value={restValue ?? ''}
-            placeholder="rest"
+            placeholder={restType === 'distance' ? 'm' : 'sec'}
+            decimals={0}
             onChange={(v) => setRest({ value: v === '' ? undefined : v })}
           />
-          <select value={restType} onChange={(e) => setRest({ type: e.target.value as RestType })}>
-            <option value="distance">m</option>
-            <option value="time">sec</option>
-          </select>
+          <span className="step-unit">{restType === 'distance' ? 'm' : 'sec'}</span>
+          <span className="step-at">@</span>
+          <input
+            className="step-pace"
+            placeholder="mm:ss"
+            defaultValue={restPace != null ? formatPace(restPace) : ''}
+            onBlur={(e) => {
+              const v = e.target.value.trim();
+              setRest({ paceSecPerKm: v === '' ? null : parsePace(v) });
+            }}
+          />
+          <span className="step-unit">/km rest</span>
         </span>
       )}
 

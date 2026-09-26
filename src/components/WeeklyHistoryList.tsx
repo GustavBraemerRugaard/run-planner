@@ -41,7 +41,7 @@ export default function WeeklyHistoryList({ weeks, firstDay }: Props) {
 
   return (
     <section className="week-history">
-      <span className="label">Weekly history</span>
+      <span className="label title">Weekly history</span>
       <div className="week-history-list">
         {sorted.map((key) => {
           const w = weeks.get(key) ?? emptyWeek(key);

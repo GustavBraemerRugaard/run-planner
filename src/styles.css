@@ -7,7 +7,23 @@
   --accent: #0284c7;
   --accent-text: #ffffff;
   --danger: #dc2626;
-  --radius: 12px;
+  --radius: 2px;
+
+  /* Spacing scale — use these instead of ad hoc px values for new/touched layout rules. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+
+  /* Type scale for stat labels/values, shared across every card and widget so "the same kind of
+     text" (a field label, a secondary caption under a number, a big stat value) is always the same
+     size everywhere, instead of each component picking its own close-but-different rem value. */
+  --fs-micro: 0.68rem; /* tiny chart-axis labels, trend arrows, small badges */
+  --fs-caption: 0.75rem; /* secondary captions under a bold stat value */
+  --fs-label: 0.8rem; /* a field/section label (also .label) */
+  --fs-value: 0.95rem; /* a normal stat value */
+  --fs-value-lg: 1.05rem; /* an emphasized stat value (e.g. a card's headline number) */
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -26,7 +42,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'SF Mono', 'JetBrains Mono', 'Roboto Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
   -webkit-text-size-adjust: 100%;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
@@ -37,7 +53,7 @@ body {
    the action buttons occupy exactly the same column as the side widgets below and their outer
    edges land flush with the widgets' borders. */
 .topbar { display: grid; grid-template-columns: 1fr; align-items: center; gap: 8px; margin-bottom: 12px; }
-.topbar h1 { font-size: 1.25rem; margin: 0; }
+.topbar h1 { font-size: 1.25rem; margin: 0; text-transform: uppercase; letter-spacing: 0.04em; }
 .topbar-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 @media (min-width: 1000px) {
   .topbar { grid-template-columns: 1fr 300px; }
@@ -45,17 +61,17 @@ body {
 }
 
 .btn {
-  font: inherit; font-size: 0.95rem; padding: 9px 14px; border-radius: 10px; cursor: pointer;
+  font: inherit; font-size: 0.95rem; padding: 9px 14px; border-radius: 2px; cursor: pointer;
   border: 1px solid var(--border); background: var(--panel); color: var(--text);
 }
 .btn:disabled { opacity: 0.55; cursor: default; }
 .btn.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; font-weight: 600; }
 .btn.danger { color: var(--danger); }
-.btn.big { padding: 14px 22px; font-size: 1.05rem; }
+.btn.big { padding: 14px 22px; font-size: var(--fs-value-lg); }
 
 .notice { padding: 10px 14px; border-radius: var(--radius); background: color-mix(in srgb, var(--accent) 14%, var(--panel)); margin-bottom: 12px; font-size: 0.92rem; }
 .notice.error { background: color-mix(in srgb, var(--danger) 16%, var(--panel)); }
-code { background: var(--border); padding: 1px 5px; border-radius: 5px; }
+code { background: var(--border); padding: 1px 5px; border-radius: 2px; }
 
 .signin { text-align: center; padding: 48px 12px; }
 .signin .fine { color: var(--muted); font-size: 0.85rem; max-width: 420px; margin: 18px auto 0; }
@@ -63,22 +79,55 @@ code { background: var(--border); padding: 1px 5px; border-radius: 5px; }
 .fine { color: var(--muted); font-size: 0.85rem; margin: 6px 0; }
 .fine.error { color: var(--danger); }
 
-.strava-panel {
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 12px; margin-bottom: 12px;
-}
-.strava-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.btn.small.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; font-weight: 600; }
-.strava-activities { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; font-size: 0.85rem; }
-.strava-activities li { display: flex; gap: 10px; flex-wrap: wrap; padding: 6px 8px; background: var(--bg); border-radius: 8px; }
-.strava-date { color: var(--muted); min-width: 78px; }
-.strava-name { flex: 1; min-width: 120px; }
-.strava-stats { color: var(--muted); }
+.section-today { margin-bottom: var(--sp-4); }
 
 main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 @media (min-width: 1000px) { main { grid-template-columns: 1fr 300px; align-items: start; } }
 .side { display: grid; gap: 16px; }
 .cal-col { display: grid; gap: 16px; min-width: 0; }
+
+/* The "today / this week at a glance" card: a next-run line, this week's total (vs. goal or last
+   week), and the run-type mix — always visible up top on desktop, and its own tab on phone. */
+.today-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: var(--sp-3); display: grid; gap: var(--sp-3);
+}
+.today-line {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%; text-align: left;
+  font: inherit; font-size: var(--fs-value); border: none; background: transparent; color: var(--text);
+  padding: 0; cursor: pointer;
+}
+.today-line:disabled { cursor: default; }
+.today-dot { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.today-sub { color: var(--muted); font-size: var(--fs-caption); font-weight: 400; }
+.today-week-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-1); }
+.today-week-total strong { font-size: var(--fs-value-lg); }
+.today-bar { margin-top: var(--sp-1); }
+.today-goal-edit { display: flex; align-items: center; gap: var(--sp-2); }
+.today-goal-edit input { width: 70px; font: inherit; font-size: 0.9rem; padding: 6px 8px; border-radius: 2px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+
+/* Phone bottom tab bar: hidden above the mobile breakpoint, where every section shows at once. */
+.mobile-tabbar { display: none; }
+@media (max-width: 700px) {
+  .mobile-tabbar {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    background: var(--panel); border-top: 1px solid var(--border);
+    padding: var(--sp-2) var(--sp-2) calc(var(--sp-2) + env(safe-area-inset-bottom));
+    gap: var(--sp-2);
+  }
+  .mobile-tabbar button {
+    flex: 1; font: inherit; font-size: 0.85rem; padding: 8px; border-radius: 2px; border: none;
+    background: transparent; color: var(--muted); cursor: pointer;
+  }
+  .mobile-tabbar button.active { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+
+  /* Only one section shows at a time, chosen by the tab bar; leave room at the bottom for it. */
+  .app { padding-bottom: 64px; }
+  .mobile-section { display: none; }
+  .app.mobile-tab-today .section-today { display: block; }
+  .app.mobile-tab-calendar .section-calendar { display: grid; }
+  .app.mobile-tab-trends .section-trends { display: grid; }
+}
 
 /* Scrollable panels keep their scroll but never show a scrollbar. */
 .no-scrollbar, .rolling-cal-body, .list-view, .week-history-list {
@@ -89,7 +138,7 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 
 .cal, .active-week, .chart-card, .avg-stats { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
 .avg-stats-head { display: flex; justify-content: space-between; align-items: center; }
-.avg-stats-toggle { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.avg-stats-toggle { display: flex; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
 .avg-stats-toggle button {
   font: inherit; font-size: 0.75rem; padding: 3px 9px; border: none; background: var(--panel);
   color: var(--text); cursor: pointer;
@@ -101,32 +150,32 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 
 .active-week-head { display: flex; justify-content: space-between; font-size: 0.9rem; }
 .summary-sub { color: var(--muted); font-size: 0.8rem; margin-top: 3px; }
-.bar { display: flex; height: 10px; border-radius: 6px; background: var(--border); overflow: hidden; margin-top: 5px; }
+.bar { display: flex; height: 10px; border-radius: 2px; background: var(--border); overflow: hidden; margin-top: 5px; }
 .bar span { display: block; height: 100%; }
 
 /* Weekly mileage chart */
 .chart-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.weeks-input { display: flex; align-items: center; gap: 5px; font-size: 0.8rem; color: var(--muted); }
+.weeks-input { display: flex; align-items: center; gap: 5px; font-size: var(--fs-label); color: var(--muted); }
 .weeks-input input {
-  width: 46px; font: inherit; font-size: 13px; padding: 3px 5px; border-radius: 6px;
+  width: 46px; font: inherit; font-size: 13px; padding: 3px 5px; border-radius: 2px;
   border: 1px solid var(--border); background: var(--bg); color: var(--text);
 }
 .chart-plot { position: relative; margin: 18px 2px 6px; }
 .chart-gridline { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--border); }
-.chart-gridline span { position: absolute; right: 0; top: -14px; width: 32px; text-align: right; font-size: 0.65rem; color: var(--muted); }
+.chart-gridline span { position: absolute; right: 0; top: -14px; width: 32px; text-align: right; font-size: var(--fs-micro); color: var(--muted); }
 /* Right gutter reserved for the axis value labels above, so the last (current-week) bar never
    sits underneath them. */
 .chart-bars { position: absolute; top: 0; bottom: 0; left: 0; right: 34px; display: flex; align-items: flex-end; gap: 2px; }
 .chart-bar-col { flex: 1; height: 100%; display: flex; align-items: flex-end; min-width: 3px; }
-.chart-bar { width: 100%; display: flex; flex-direction: column-reverse; border-radius: 3px 3px 0 0; overflow: hidden; min-height: 1px; }
+.chart-bar { width: 100%; display: flex; flex-direction: column-reverse; border-radius: 0; overflow: hidden; min-height: 1px; }
 .chart-bar.current { outline: 2px solid var(--accent); outline-offset: 1px; }
 .chart-bar span { display: block; width: 100%; }
 
 /* View toggle */
 .cal-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.cal-title { margin: 0; font-size: 1rem; font-weight: 700; }
+.cal-title { margin: 0; font-size: 1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
 .cal-toolbar-actions { display: flex; align-items: center; gap: 8px; }
-.view-toggle { display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.view-toggle { display: flex; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
 .view-toggle button {
   font: inherit; font-size: 0.85rem; padding: 6px 14px; border: none; background: var(--panel);
   color: var(--text); cursor: pointer;
@@ -144,32 +193,32 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .rolling-week { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--border); min-height: 84px; }
 .rolling-day { border-right: 1px solid var(--border); padding: 4px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .rolling-day:last-child { border-right: none; }
-.rolling-day.today { background: color-mix(in srgb, var(--accent) 8%, transparent); }
-.rolling-day-num { font-size: 0.75rem; color: var(--muted); }
+.rolling-day.today { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 2px; }
+.rolling-day-num { font-size: var(--fs-caption); color: var(--muted); }
 .rolling-day.today .rolling-day-num { color: var(--accent); font-weight: 700; }
 .rolling-pills { display: flex; flex-direction: column; gap: 2px; }
 
 .pill {
-  font: inherit; font-size: 0.68rem; padding: 2px 5px; border-radius: 6px; cursor: pointer; text-align: left;
+  font: inherit; font-size: 0.68rem; padding: 2px 5px; border-radius: 2px; cursor: pointer; text-align: left;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; border: none; font-weight: 600;
 }
 
 /* List view */
 .list-view { max-height: 472px; overflow-y: auto; display: grid; gap: 2px; }
 .list-day { padding: 8px 4px; border-bottom: 1px solid var(--border); }
-.list-day.today { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 8px; }
+.list-day.today { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 2px; }
 .list-day-head { font-size: 0.85rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.list-today-badge { font-size: 0.68rem; font-weight: 700; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 1px 7px; }
+.list-today-badge { font-size: var(--fs-micro); font-weight: 700; color: var(--accent); border: 1px solid var(--accent); border-radius: 2px; padding: 1px 7px; }
 .list-day-entries { display: grid; gap: 5px; }
 .list-entry {
   display: flex; align-items: center; gap: 8px; font: inherit; font-size: 0.85rem; text-align: left;
-  padding: 7px 9px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg); cursor: pointer;
+  padding: 7px 9px; border-radius: 2px; border: 1px solid var(--border); background: var(--bg); cursor: pointer;
 }
 .list-entry.planned { border-style: dashed; }
-.list-entry-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.list-entry-dot { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); flex: none; }
 .list-entry-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.list-entry-sub { color: var(--muted); font-size: 0.78rem; flex: none; }
-.list-entry-empty { color: var(--muted); font-size: 0.82rem; cursor: pointer; padding: 4px 2px; }
+.list-entry-sub { color: var(--muted); font-size: var(--fs-caption); flex: none; }
+.list-entry-empty { color: var(--muted); font-size: var(--fs-label); cursor: pointer; padding: 4px 2px; }
 
 /* Active week / mileage chart: stacked actual (Strava, orange) + planned (by type) segments */
 .bar-seg { display: block; height: 100%; }
@@ -185,23 +234,27 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .latest-run-stats { display: flex; justify-content: space-between; gap: 6px; }
 .latest-run-stats div { display: flex; flex-direction: column; flex: none; }
 .latest-run-stats strong { font-size: 1rem; }
-.latest-run-stats span { color: var(--muted); font-size: 0.7rem; }
+.latest-run-stats span { color: var(--muted); font-size: var(--fs-micro); }
 
 /* Weekly history list — every row shares one grid, so each metric column lines up across weeks */
 .week-history { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
 .week-history-list { max-height: 340px; overflow-y: auto; display: grid; gap: 8px; margin-top: 8px; }
 .week-history-row {
-  display: grid; grid-template-columns: 1fr 46px 76px 76px 76px 68px; align-items: center; gap: 8px;
-  border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px;
+  display: grid; grid-template-columns: 1fr 50px 84px 104px 90px 76px; align-items: center; gap: 8px;
+  border: 1px solid var(--border); border-radius: 2px; padding: 8px 10px;
 }
 .week-history-row.current { border-color: var(--accent); }
 .week-history-range { font-size: 0.82rem; font-weight: 600; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .week-history-stats { display: contents; }
-.week-history-stats > div { display: flex; align-items: baseline; gap: 3px; font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+.week-history-stats > div { display: flex; align-items: baseline; gap: 3px; font-size: var(--fs-caption); color: var(--muted); white-space: nowrap; }
 .week-history-stats strong { color: var(--text); font-size: 0.92rem; }
-.trend { font-size: 0.7rem; color: var(--muted); font-weight: 700; }
+.trend { font-size: var(--fs-micro); color: var(--muted); font-weight: 700; }
 @media (max-width: 640px) {
-  .week-history-row { grid-template-columns: 1fr repeat(5, 1fr); font-size: 0.75rem; }
+  /* Six columns can't all keep a readable width in one row this narrow (they were overlapping) —
+     the date range gets its own line, and the five stats wrap onto as many lines as they need,
+     each sized to its own content instead of being squeezed into an equal, too-narrow share. */
+  .week-history-row { grid-template-columns: 1fr; gap: 4px; }
+  .week-history-stats { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 }
 
 /* Activity detail modal — same trick as the latest-run card: naturally-sized metrics spread with
@@ -214,8 +267,8 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .lap-chart-plot { flex: 1; min-width: 0; }
 .lap-chart { display: block; width: 100%; height: 78px; cursor: crosshair; }
 .lap-chart-xaxis { position: relative; height: 14px; border-top: 1px solid var(--border); }
-.lap-chart-xaxis span { position: absolute; top: 2px; font-size: 0.62rem; color: var(--muted); white-space: nowrap; }
-.lap-chart-axis { position: relative; height: 78px; font-size: 0.68rem; color: var(--muted); text-align: right; min-width: 48px; }
+.lap-chart-xaxis span { position: absolute; top: 2px; font-size: var(--fs-micro); color: var(--muted); white-space: nowrap; }
+.lap-chart-axis { position: relative; height: 78px; font-size: var(--fs-micro); color: var(--muted); text-align: right; min-width: 48px; }
 .lap-chart-axis span { position: absolute; right: 0; white-space: nowrap; }
 .laps { margin-top: 4px; }
 .laps-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 6px; }
@@ -231,18 +284,50 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
   justify-content: center; padding: 0; z-index: 50;
 }
 @media (min-width: 700px) { .modal-backdrop { align-items: center; padding: 20px; } }
+.modal-wrap { width: 100%; max-width: 520px; display: flex; flex-direction: column; gap: 14px; max-height: 92vh; }
 .modal {
-  background: var(--panel); width: 100%; max-width: 520px; max-height: 92vh; overflow-y: auto;
-  border-radius: 16px 16px 0 0; padding: 18px; display: grid; gap: 14px;
+  background: var(--panel); width: 100%; max-height: 92vh; overflow-y: auto;
+  border-radius: 2px 2px 0 0; padding: 18px; display: grid; gap: 14px; align-content: start;
   padding-bottom: calc(18px + env(safe-area-inset-bottom));
 }
-@media (min-width: 700px) { .modal { border-radius: 16px; } }
-.modal h2 { margin: 0; font-size: 1.15rem; }
+@media (min-width: 700px) { .modal { border-radius: 2px; } }
+.modal h2 { margin: 0; font-size: 1.15rem; text-transform: uppercase; letter-spacing: 0.04em; }
+
+@media (min-width: 900px) {
+  .modal-wrap { max-width: 860px; flex-direction: row; align-items: flex-start; }
+  .modal-wrap .modal { flex: 1 1 480px; max-width: 480px; }
+}
+
+/* Run-form context panel: what's already planned/done around the run being edited. */
+.form-context {
+  background: var(--panel); border-radius: 2px 2px 0 0; padding: 18px; display: grid; gap: 14px;
+  max-height: 92vh; overflow-y: auto; flex: 1 1 320px;
+}
+@media (min-width: 700px) { .form-context { border-radius: 2px; } }
+.form-context-stats { display: flex; gap: 14px; }
+.form-context-stats > div { display: flex; flex-direction: column; gap: 2px; }
+.form-context-stats strong { font-size: var(--fs-value-lg); }
+.form-context-type-rows { display: grid; gap: 5px; margin-top: 6px; }
+.form-context-type-row { display: grid; grid-template-columns: 60px 1fr 40px; align-items: center; gap: 8px; font-size: var(--fs-caption); }
+.form-context-type-label { color: var(--muted); }
+.form-context-type-km { text-align: right; color: var(--muted); }
+.form-context-week { display: grid; gap: 6px; }
+.form-context-day { display: grid; gap: 2px; padding: 5px 0; border-bottom: 1px solid var(--border); }
+.form-context-day:last-child { border-bottom: none; }
+.form-context-day.current { background: color-mix(in srgb, var(--accent) 6%, transparent); border-radius: 2px; padding: 5px 6px; }
+.form-context-day-date { font-size: var(--fs-caption); color: var(--muted); }
+.form-context-entry { display: flex; align-items: center; gap: 6px; font-size: var(--fs-label); }
+.form-context-entry.empty { color: var(--muted); }
+.form-context-entry.draft { font-weight: 600; }
+.form-context-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.form-context-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.form-context-km { color: var(--muted); flex: none; }
 
 .field { display: grid; gap: 5px; min-width: 0; }
 .field.grow { flex: 1; }
-.label { font-size: 0.8rem; color: var(--muted); }
-.hint.error { color: var(--danger); font-size: 0.8rem; }
+.label { font-size: var(--fs-label); color: var(--muted); }
+.label.title { text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; color: var(--text); }
+.hint.error { color: var(--danger); font-size: var(--fs-label); }
 .row { display: flex; gap: 10px; flex-wrap: wrap; }
 .row .field { flex: 0 0 auto; width: 96px; }
 .row .field.grow { width: auto; flex: 1; min-width: 150px; }
@@ -250,15 +335,28 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 
 /* 16px+ font size prevents iOS Safari from zooming into inputs */
 input:not([type='checkbox']), textarea {
-  font: inherit; font-size: 16px; padding: 9px 10px; border-radius: 10px; width: 100%;
+  font: inherit; font-size: 16px; padding: 9px 10px; border-radius: 2px; width: 100%;
   border: 1px solid var(--border); background: var(--bg); color: var(--text);
 }
 textarea { resize: vertical; }
+
+/* dd/mm/yyyy date field: a masked text input plus a calendar button that opens the native date
+   picker (kept off-screen otherwise, never shown as its own visible control). */
+.date-field { position: relative; display: flex; gap: 6px; align-items: center; }
+.date-field input[type='text'] { flex: 1; min-width: 0; }
+.date-field-pick {
+  flex: none; font-size: 16px; line-height: 1; padding: 8px 10px; border-radius: 2px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer;
+}
+.date-field-native {
+  position: absolute; inset: auto 0 0 auto; width: 1px !important; height: 1px; padding: 0;
+  border: none; opacity: 0; pointer-events: none;
+}
 .check { display: flex; gap: 8px; align-items: center; font-size: 0.95rem; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
-  font: inherit; font-size: 0.85rem; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  font: inherit; font-size: 0.85rem; padding: 6px 12px; border-radius: 2px; cursor: pointer;
   border: 1.5px solid var(--chip); background: transparent; color: var(--text);
 }
 .chip.active { background: var(--chip); color: var(--chip-text, #fff); }
@@ -266,7 +364,7 @@ textarea { resize: vertical; }
 .actions { display: flex; gap: 8px; align-items: center; }
 .spacer { flex: 1; }
 
-.btn.small { font-size: 0.8rem; padding: 5px 10px; border-radius: 8px; width: fit-content; }
+.btn.small { font-size: 0.8rem; padding: 5px 10px; border-radius: 2px; width: fit-content; }
 .check.small { font-size: 0.82rem; gap: 5px; }
 
 .steps-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
@@ -275,26 +373,27 @@ textarea { resize: vertical; }
 
 .step-row {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap; background: var(--bg);
-  border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px; font-size: 0.9rem;
+  border: 1px solid var(--border); border-radius: 2px; padding: 6px 8px; font-size: 0.9rem;
 }
 .step-row input { font-size: 15px; padding: 6px 7px; width: auto; }
 .step-x, .step-at, .step-unit { color: var(--muted); font-size: 0.82rem; }
-.step-unit-select {
-  font: inherit; font-size: 13px; padding: 5px; border-radius: 6px; border: 1px solid var(--border);
-  background: var(--bg); color: var(--text);
-}
 .step-pace { width: 66px !important; }
-.step-rest { display: flex; align-items: center; gap: 4px; margin-left: auto; }
-.step-rest select {
-  font: inherit; font-size: 13px; padding: 5px; border-radius: 6px; border: 1px solid var(--border);
-  background: var(--bg); color: var(--text);
+.step-rest { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-left: auto; padding-top: 4px; }
+
+/* Small segmented toggle button group — the app's stand-in for a <select> dropdown everywhere. */
+.seg-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
+.seg-toggle button {
+  font: inherit; font-size: 12px; padding: 5px 8px; border: none; background: var(--bg);
+  color: var(--text); cursor: pointer; line-height: 1;
 }
+.seg-toggle button:not(:first-child) { border-left: 1px solid var(--border); }
+.seg-toggle button.active { background: var(--accent); color: var(--accent-text); }
 .step-remove {
   margin-left: auto; border: none; background: transparent; color: var(--muted); cursor: pointer;
   font-size: 1rem; padding: 2px 4px; line-height: 1;
 }
 .step-remove:hover { color: var(--danger); }
 
-.totals { display: flex; gap: 20px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; }
+.totals { display: flex; gap: 20px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 2px; }
 .totals > div { display: grid; gap: 2px; }
-.totals strong { font-size: 1.05rem; }
+.totals strong { font-size: var(--fs-value-lg); }

@@ -17,7 +17,7 @@ export default function AverageStatsCard({ activities, firstDay }: Props) {
   return (
     <section className="avg-stats">
       <div className="avg-stats-head">
-        <span className="label">Weekly average</span>
+        <span className="label title">Weekly average</span>
         <div className="avg-stats-toggle">
           {OPTIONS.map((n) => (
             <button key={n} type="button" className={weeksCount === n ? 'active' : ''} onClick={() => setWeeksCount(n)}>
@@ -28,19 +28,19 @@ export default function AverageStatsCard({ activities, firstDay }: Props) {
       </div>
       <div className="avg-stats-rows">
         <div className="avg-stats-row">
-          <span>Activities / week</span>
+          <span>Runs</span>
           <strong>{stats.avgRunsPerWeek.toFixed(1)}</strong>
         </div>
         <div className="avg-stats-row">
-          <span>Distance / week</span>
+          <span>Distance</span>
           <strong>{formatKm(stats.avgKmPerWeek)} km</strong>
         </div>
         <div className="avg-stats-row">
-          <span>Time / week</span>
+          <span>Time</span>
           <strong>{stats.avgTimeSecPerWeek ? formatDuration(stats.avgTimeSecPerWeek) : '—'}</strong>
         </div>
         <div className="avg-stats-row">
-          <span>Avg pace</span>
+          <span>Avg. pace</span>
           <strong>{stats.avgPaceSecPerKm ? `${formatPace(stats.avgPaceSecPerKm)}/km` : '—'}</strong>
         </div>
       </div>

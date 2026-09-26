@@ -38,9 +38,16 @@ export const ACTUAL_TEXT_COLOR = '#ffffff';
 export type RestType = 'distance' | 'time';
 
 export interface Rest {
+  /** Which raw value you enter: a distance to cover, or a time to spend, between reps. */
   type: RestType;
   /** Meters for 'distance', seconds for 'time'. */
   value: number;
+  /**
+   * Recovery pace in seconds per km, or null for a standing rest (no distance covered). Lets a
+   * 'distance' rest imply a time, or a 'time' rest imply a distance — either way it counts toward
+   * total distance and the run's average pace, same as any other step.
+   */
+  paceSecPerKm: number | null;
 }
 
 export type StepKind = 'warmup' | 'main' | 'cooldown';
@@ -94,11 +101,28 @@ export function newStep(kind: StepKind, overrides: Partial<Step> = {}): Step {
 
 // ---- Derived numbers -------------------------------------------------------------------------
 
-/** Distance covered by rest between reps, in km (0 for time-based or missing rest). */
-function restDistanceKm(step: Step): number {
+/**
+ * Distance covered by rest between reps, in km. A 'distance' rest always covers its entered
+ * distance; a 'time' rest only covers distance if it has a pace (otherwise it's a standing rest).
+ */
+export function restDistanceKm(step: Step): number {
   if (!step.rest || step.reps <= 1) return 0;
   const restCount = step.reps - 1;
-  return step.rest.type === 'distance' ? (step.rest.value / 1000) * restCount : 0;
+  const r = step.rest;
+  if (r.type === 'distance') return (r.value / 1000) * restCount;
+  return r.paceSecPerKm ? (r.value / r.paceSecPerKm) * restCount : 0;
+}
+
+/**
+ * Time spent on rest between reps, in seconds. A 'time' rest always takes its entered time; a
+ * 'distance' rest only has a known time if it has a pace (otherwise its time isn't tracked).
+ */
+export function restTimeSec(step: Step): number {
+  if (!step.rest || step.reps <= 1) return 0;
+  const restCount = step.reps - 1;
+  const r = step.rest;
+  if (r.type === 'time') return r.value * restCount;
+  return r.paceSecPerKm ? (r.value / 1000) * r.paceSecPerKm * restCount : 0;
 }
 
 export function stepDistanceKm(step: Step): number {
@@ -109,15 +133,22 @@ export function totalDistanceKm(steps: Step[]): number {
   return steps.reduce((sum, s) => sum + stepDistanceKm(s), 0);
 }
 
-/** Distance-weighted average pace across steps that have a target pace, in seconds per km. */
+/** Distance-weighted average pace across steps and rests that have a target pace, in seconds per km. */
 export function averagePaceSecPerKm(steps: Step[]): number | null {
   let distance = 0;
   let time = 0;
   for (const s of steps) {
-    if (s.paceSecPerKm == null) continue;
-    const d = s.reps * s.distanceKm;
-    distance += d;
-    time += d * s.paceSecPerKm;
+    if (s.paceSecPerKm != null) {
+      const d = s.reps * s.distanceKm;
+      distance += d;
+      time += d * s.paceSecPerKm;
+    }
+    const restKm = restDistanceKm(s);
+    const restSec = restTimeSec(s);
+    if (restKm > 0 && restSec > 0) {
+      distance += restKm;
+      time += restSec;
+    }
   }
   return distance > 0 ? time / distance : null;
 }
@@ -150,12 +181,15 @@ export function parsePace(text: string): number | null {
 }
 
 export function formatRest(rest: Rest): string {
+  const pace = rest.paceSecPerKm != null ? ` @ ${formatPace(rest.paceSecPerKm)}` : '';
   if (rest.type === 'distance') {
-    return rest.value >= 1000 ? `${formatKm(rest.value / 1000)}k rest` : `${rest.value}m rest`;
+    const dist = rest.value >= 1000 ? `${formatKm(rest.value / 1000)}k` : `${rest.value}m`;
+    return `${dist} rest${pace}`;
   }
   const m = Math.floor(rest.value / 60);
   const s = rest.value % 60;
-  return m > 0 ? `${m}${s ? `:${String(s).padStart(2, '0')}` : 'min'} rest` : `${s}s rest`;
+  const time = m > 0 ? `${m}${s ? `:${String(s).padStart(2, '0')}` : 'min'}` : `${s}s`;
+  return `${time} rest${pace}`;
 }
 
 export function buildTitle(type: RunType, steps: Step[]): string {
@@ -185,7 +219,7 @@ const PROP_AUTO_DESC = 'autoDesc';
 
 function serializeSteps(steps: Step[]): string {
   // Compact tuple encoding to stay well under Google's extendedProperties size limits:
-  // [kind, reps, distanceKm, paceSecPerKm|null, restType|null, restValue|null]
+  // [kind, reps, distanceKm, paceSecPerKm|null, restType|null, restValue|null, restPaceSecPerKm|null]
   const rows = steps.map((s) => [
     s.kind,
     s.reps,
@@ -193,6 +227,7 @@ function serializeSteps(steps: Step[]): string {
     s.paceSecPerKm,
     s.rest?.type ?? null,
     s.rest?.value ?? null,
+    s.rest?.paceSecPerKm ?? null,
   ]);
   return JSON.stringify(rows);
 }
@@ -200,13 +235,21 @@ function serializeSteps(steps: Step[]): string {
 function deserializeSteps(json: string | undefined): Step[] {
   if (!json) return [];
   try {
-    const rows = JSON.parse(json) as [StepKind, number, number, number | null, RestType | null, number | null][];
-    return rows.map(([kind, reps, distanceKm, paceSecPerKm, restType, restValue]) =>
+    const rows = JSON.parse(json) as [
+      StepKind,
+      number,
+      number,
+      number | null,
+      RestType | null,
+      number | null,
+      number | null,
+    ][];
+    return rows.map(([kind, reps, distanceKm, paceSecPerKm, restType, restValue, restPaceSecPerKm]) =>
       newStep(kind, {
         reps,
         distanceKm,
         paceSecPerKm,
-        rest: restType && restValue != null ? { type: restType, value: restValue } : null,
+        rest: restType && restValue != null ? { type: restType, value: restValue, paceSecPerKm: restPaceSecPerKm ?? null } : null,
       }),
     );
   } catch {
@@ -482,4 +525,116 @@ export function trend(curr: number | null, prev: number | null, epsilonFrac = 0.
   if (delta > epsilonFrac) return 'up';
   if (delta < -epsilonFrac) return 'down';
   return 'flat';
+}
+
+// ---- Run-form weekly context --------------------------------------------------------------------
+
+export interface WeekEntry {
+  date: string;
+  label: string;
+  km: number;
+  kind: 'actual' | 'planned';
+  /** Only set for planned entries. */
+  runType?: RunType;
+  /** True for the run currently being edited in the form (which may not be saved yet). */
+  isDraft?: boolean;
+}
+
+export interface RunFormWeekContext {
+  prevWeekStart: string;
+  weekStart: string;
+  /** The 7 dates of the previous week, in order. */
+  prevWeekDates: string[];
+  /** The 7 dates of the week containing the run being edited, in order. */
+  currentWeekDates: string[];
+  prevWeekEntries: WeekEntry[];
+  currentWeekEntries: WeekEntry[];
+  /** This week's total km (actual wins over planned on any day both exist), including the draft run. */
+  currentWeekTotalKm: number;
+  /** Total km over the trailing 7 days ending on (and including) the draft run's date. */
+  rolling7DayKm: number;
+  /** km per run type this week, from planned runs on days with no actual (same rule as above). */
+  currentWeekByType: Partial<Record<RunType, number>>;
+}
+
+export function addDaysLocal(dateStr: string, n: number): string {
+  const d = parseLocalDate(dateStr);
+  d.setDate(d.getDate() + n);
+  return localDateString(d);
+}
+
+/**
+ * Weekly context for the run-editing form: what's already planned or done in the surrounding weeks,
+ * so a new or edited run can be seen against the intensity around it. `draft` is the run as currently
+ * being edited in the form (its live date/type/steps, which may differ from what's saved) — its saved
+ * counterpart, if any, is excluded via `excludeRunId` so it isn't counted twice.
+ */
+export function buildRunFormWeekContext(
+  dayEntries: Map<string, DayEntries>,
+  firstDay: number,
+  draft: { date: string; type: RunType; steps: Step[] },
+  excludeRunId: string | undefined,
+): RunFormWeekContext {
+  const weekStart = weekKey(parseLocalDate(draft.date), firstDay);
+  const prevWeekStart = addDaysLocal(weekStart, -7);
+  const draftKm = totalDistanceKm(draft.steps);
+
+  function dayList(date: string): WeekEntry[] {
+    const entry = dayEntries.get(date);
+    const list: WeekEntry[] = [];
+    for (const a of entry?.actual ?? []) {
+      list.push({ date, label: a.name, km: a.distanceKm, kind: 'actual' });
+    }
+    for (const r of entry?.planned ?? []) {
+      if (r.id === excludeRunId) continue;
+      list.push({ date, label: buildTitle(r.type, r.steps), km: totalDistanceKm(r.steps), kind: 'planned', runType: r.type });
+    }
+    if (date === draft.date) {
+      list.push({ date, label: buildTitle(draft.type, draft.steps), km: draftKm, kind: 'planned', runType: draft.type, isDraft: true });
+    }
+    return list;
+  }
+
+  /** This day's contribution to a total: actual entries win over planned when both exist. */
+  function dayKm(date: string): number {
+    const list = dayList(date);
+    const actualEntries = list.filter((e) => e.kind === 'actual');
+    const source = actualEntries.length > 0 ? actualEntries : list;
+    return source.reduce((sum, e) => sum + e.km, 0);
+  }
+
+  function addByTypeContribution(date: string, acc: Partial<Record<RunType, number>>) {
+    const list = dayList(date);
+    if (list.some((e) => e.kind === 'actual')) return; // actual wins, no type to attribute
+    for (const e of list) {
+      if (e.kind === 'planned' && e.runType) acc[e.runType] = (acc[e.runType] ?? 0) + e.km;
+    }
+  }
+
+  const prevWeekDates = Array.from({ length: 7 }, (_, i) => addDaysLocal(prevWeekStart, i));
+  const currentWeekDates = Array.from({ length: 7 }, (_, i) => addDaysLocal(weekStart, i));
+
+  const prevWeekEntries = prevWeekDates.flatMap(dayList);
+  const currentWeekEntries = currentWeekDates.flatMap(dayList);
+  const currentWeekTotalKm = currentWeekDates.reduce((sum, d) => sum + dayKm(d), 0);
+
+  const currentWeekByType: Partial<Record<RunType, number>> = {};
+  for (const d of currentWeekDates) addByTypeContribution(d, currentWeekByType);
+
+  const rolling7DayKm = Array.from({ length: 7 }, (_, i) => addDaysLocal(draft.date, i - 6)).reduce(
+    (sum, d) => sum + dayKm(d),
+    0,
+  );
+
+  return {
+    prevWeekStart,
+    weekStart,
+    prevWeekDates,
+    currentWeekDates,
+    prevWeekEntries,
+    currentWeekEntries,
+    currentWeekTotalKm,
+    rolling7DayKm,
+    currentWeekByType,
+  };
 }

@@ -15,7 +15,7 @@ export default function LatestRunCard({ activity, onSelect }: Props) {
   if (!activity) {
     return (
       <section className="latest-run">
-        <span className="label">Latest run</span>
+        <span className="label title">Latest run</span>
         <p className="fine">No Strava runs found yet.</p>
       </section>
     );
@@ -24,7 +24,7 @@ export default function LatestRunCard({ activity, onSelect }: Props) {
   return (
     <section className="latest-run" onClick={() => onSelect(activity)}>
       <div className="latest-run-head">
-        <span className="label">Latest run</span>
+        <span className="label title">Latest run</span>
         <span className="fine">{when.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
       </div>
       <div className="latest-run-name">{activity.name}</div>
