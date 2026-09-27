@@ -36,6 +36,11 @@ card shell (`.today-card`, `--sp-3` padding, `--sp-3` gap grid), a clickable "to
 run name + sub-label, or "No run planned today"), then a "This week" section: total km (with either a
 goal comparison or a "vs. last week ▲/▼" trend), a thin progress bar (`.bar`, 10px tall, filled with
 `ACTUAL_COLOR`), and a "Set/Edit goal" button that swaps the row for a small km-input + Save/Clear.
+**The km total, the bar's fill, and the "vs. last week" trend all count only completed (Strava)
+distance — `CombinedWeekSummary.actualKm`, never `.totalKm`** (which also includes still-planned
+calendar events). This is deliberate: a distance goal is a target for runs actually done, not for
+what's sitting on the calendar unrun — a planned-but-not-yet-run event must never inflate the goal
+bar or the week's displayed total here.
 
 ## Main two-column layout
 
@@ -59,14 +64,18 @@ A CSS grid, `16px` gap, containing exactly two boxes stacked vertically:
      `matchMedia('(min-width: 1000px)')` and stored as `calHeight` — this number drives the side
      rail's sizing (see `.side-top` below). **Do not remove this measurement** without also revisiting
      the side-rail sizing logic that depends on it.
-2. **`WeeklyHistoryList`** (`.week-history`, card shell) — directly below `.cal`, same `16px` gap.
-   Title "Weekly history", then `.week-history-list` — a scrollable (`max-height: 254px`, no visible
-   scrollbar), `8px`-gapped grid of the last 12 weeks (always 12 rows, oldest data padded with
-   zero-value rows rather than omitted — always the same list length). Each `.week-history-row` is one
-   CSS grid with fixed column widths (`1fr 50px 84px 104px 90px 76px`): date range (+ "This week" badge
-   on the current week, and an accent border on that row) | runs | km (+ trend arrow) | time (+ trend
-   arrow) | pace (+ trend arrow) | bpm (+ trend arrow). All rows share these exact column widths so
-   every metric lines up vertically week to week — a new column must be added to *all* rows, never one.
+2. **`HistoryList`** (`.week-history`, card shell) — directly below `.cal`, same `16px` gap.
+   `.week-history-head`: title "History" plus a `.week-history-toggle` (the same segmented-toggle visual
+   as `AverageStatsCard`'s 4w/12w toggle) switching between **Week** and **Month** granularity — the two
+   modes share every row/grid/column rule below, only the period length and the date-range label differ
+   (`Sep 21–Sep 27` vs `Sep 2026`, "This week" vs "This month"). Then `.week-history-list` — a scrollable
+   (`max-height: 254px`, no visible scrollbar), `8px`-gapped grid of the last 12 periods (always 12 rows,
+   oldest data padded with zero-value rows rather than omitted — always the same list length). Each
+   `.week-history-row` is one CSS grid with fixed column widths (`1fr 50px 84px 104px 90px 76px`): date
+   range (+ "This week"/"This month" badge on the current period, and an accent border on that row) |
+   runs | km (+ trend arrow) | time (+ trend arrow) | pace (+ trend arrow) | bpm (+ trend arrow). All
+   rows share these exact column widths so every metric lines up vertically period to period — a new
+   column must be added to *all* rows, never one.
    - **254px is a deliberately tuned value**, not arbitrary: it was specifically reduced (from showing
      more rows at a glance) so the mileage chart beside it — which mirrors this list's own rendered
      height — would also shrink to match. If you resize this list, the mileage chart's height changes
@@ -146,11 +155,12 @@ default; a different week while scrolled elsewhere in `RollingCalendar`/`ListVie
 
 #### Weekly Average Card (`.avg-stats`)
 
-Card shell. Header: "Weekly average" + a 2-option segmented toggle (**4w** / **12w**). Below: 4 stat
-rows (Runs, Distance, Time, Avg. pace), each `space-between` (label left, bold value right). This is
-the side-top group's *last* child, so it's the one that absorbs the height-matching slack described
-above — expect it to sometimes have a little extra blank room below its 4 rows; that's intentional
-flex-grow behavior, not a bug.
+Card shell. Header: "Weekly average" + a 2-option segmented toggle (**4w** / **12w**). Below: 5 stat
+rows (Runs, Distance, Time, Avg. pace, Avg. heart rate — the last a time-weighted average across every
+run in the window that recorded heart rate, "—" if none did), each `space-between` (label left, bold
+value right). This is the side-top group's *last* child, so it's the one that absorbs the height-matching
+slack described above — expect it to sometimes have a little extra blank room below its 5 rows; that's
+intentional flex-grow behavior, not a bug.
 
 #### Mileage Chart (`.chart-card`)
 
@@ -188,17 +198,65 @@ still match (they were last verified pixel-identical at 860×669).
 
 - **RunForm** (`.modal-wrap`, `flex-direction: row` at this breakpoint): two side-by-side panels.
   - Left: `.modal` (the actual form, `flex: 1 1 480px; max-width: 480px`) — type chips, date field,
-    warm-up/main/cool-down step editors, computed totals, auto-generated calendar title (read-only),
-    editable description, and Delete/Cancel/Save actions. `align-items: flex-start` on `.modal-wrap` is
-    load-bearing here (see the architecture doc) — without it the form silently stretches to match the
-    context panel's height, leaving dead space below its buttons.
+    warm-up/main/cool-down step editors, computed totals, and Delete/Cancel/Save actions.
+    `align-items: flex-start` on `.modal-wrap` is load-bearing here (see the architecture doc) — without
+    it the form silently stretches to match the context panel's height, leaving dead space below its
+    buttons.
+  - The form's own height is **fixed once, not continuously content-driven**: it's measured on mount
+    (this run's initial steps decide the box size, same as it always has) and re-measured only when the
+    layout crosses the 900px breakpoint or the window itself resizes (which can change the effective
+    `max-height: 92vh` cap) — never in response to the form's own content changing size (adding/removing
+    a step, toggling warm-up/cool-down). That measured height is applied as the form's own inline
+    `height`, so adding a step scrolls the form internally (`.modal`'s `overflow-y: auto`) instead of
+    growing the box — this was an explicit fix for the box visibly resizing as you edited steps, which
+    read as jittery. See `docs/ARCHITECTURE.md`'s height-matching pattern note for the full mechanism
+    (`RunForm.tsx`'s effect) and why a plain `ResizeObserver` on the form element is the wrong tool here
+    (it would fire on every content-driven resize too, defeating the fix).
+  - The `<h2>` is not a static "New run"/"Edit run" label: it shows the run's own computed calendar
+    title (`buildTitle(type, steps)`, e.g. "8K TEMPO"), live-updating as the type/steps change, with a
+    small muted `(new)`/`(editing)` tag (`.modal-tag`) after it that only ever appears in this window —
+    it is never written to the saved calendar event. This replaced a separate "Calendar title (auto)"
+    read-only input field, which is gone now that the h2 shows the same value. The description is
+    auto-generated (`buildDescription(steps)`) and saved to the calendar event exactly as before, but is
+    no longer shown or editable in this form — there is intentionally no description textarea anymore;
+    don't re-add one without the user asking, since surfacing it was explicitly deemed unnecessary.
   - Right: `RunContextPanel` (`.form-context`, `flex: 1 1 320px`) — read-only: this week's total + 7-day
-    rolling total, this week's run-type mix (mini bars), and day-by-day rows for the previous and
-    current week (each entry a colored dot + label + km, "(editing)" tag on the draft being edited).
-    Its `max-height` is set in JS to exactly match the form panel's measured height, scrolling
-    internally if its own content is taller — the two panels always end at the same bottom edge, with
-    no visible scrollbar handle (see `docs/ARCHITECTURE.md`'s "no scrollbar handles, anywhere" rule —
-    applies here same as everywhere else in the app).
+    rolling total, this week's run-type mix (mini bars), a compact 14-day timeline
+    (`.form-context-timeline`) covering the previous and current week, and — below that — a training-load
+    gauge previewing what saving this run would do to the acute:chronic ratio. This replaced an earlier
+    design of two separately-labeled 7-row day lists (each row: colored dot + label + km text), which
+    read as dense and repetitive (duplicate "Mon Tue Wed…" headers, near-identical row shapes). The
+    timeline instead has: one `<span className="label">Previous 2 weeks</span>` declaring what it is
+    (a single declaration, not a divider — an earlier version used a divider line between the two
+    7-cell strips instead, which read as more separation than intended for what's meant to feel like one
+    continuous fortnight; removed in favor of the one label above, with no divider between the strips),
+    one shared weekday-letter header row (`.form-context-weekdays`, both weeks use the same weekday
+    columns so one header serves both), then the previous week's `.form-context-strip` directly followed
+    by the current week's. Each day is a compact `.form-context-cell`: a date number, plus — if anything
+    happened that day — a small colored pill (actual-run orange, or the planned run's type color)
+    showing its km; a bare date number with no pill reads as a rest day. Actual wins over planned in a
+    cell exactly like the domain layer's own day/week totals, so the numbers always agree with the stats
+    above. The day currently being edited (the draft, which may not be saved yet) gets a highlighted cell
+    (`.form-context-cell.draft`) instead of the old "(editing)" text suffix — that label still exists,
+    just moved into the cell's hover tooltip alongside every entry's full label, since a day with more
+    than one entry (e.g. a completed run plus the draft on the same date) no longer has room to show
+    each on its own line.
+  - `TrainingLoadGauge` (shared with `ActiveWeekCard` — same component, see `docs/ARCHITECTURE.md`) sits
+    at the bottom of the context panel, fed a training-load computed with the draft run folded into
+    `dayEntries` in place of its own saved copy (`overlayDraftRun` in `domain/run.ts`), "as of" the
+    draft's own date — so it live-updates as you change the type/steps/date, answering "what would
+    saving this do to my load" rather than only "what's already around it". This was added specifically
+    to fill space: once the timeline replaced the old day-list design, the panel's natural content height
+    stopped matching the form panel's, so the panel's `height` (not just `max-height`) is now forced in
+    JS to the form panel's measured height (see below) — which left blank space at the bottom, and this
+    gauge fills it with something relevant rather than empty padding.
+  - The panel's `height` (not only `max-height`) is set in JS to exactly match the form panel's measured
+    height, scrolling internally if its own content is ever taller — **use `height`, not `max-height`,
+    for this**: `max-height` alone only caps the box, it doesn't force a shorter-content panel to grow to
+    match, which is what silently broke the "both panels end at the same edge" guarantee once the
+    timeline redesign shortened this panel's natural content. The two panels must always end at the same
+    bottom edge, with no visible scrollbar handle (see `docs/ARCHITECTURE.md`'s "no scrollbar handles,
+    anywhere" rule — applies here same as everywhere else in the app).
 - **ActivityDetail** (`.modal-wrap.single`, one panel, `max-width: 860px`): activity name/date header,
   a totals row (same equal-gap-spread pattern as LatestRunCard), pace and HR lap-by-lap bar charts
   (`LapChart` — bar width proportional to lap distance, y-axis auto-scaled with padding so no bar

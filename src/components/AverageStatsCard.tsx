@@ -9,7 +9,8 @@ interface Props {
 
 const OPTIONS = [4, 12] as const;
 
-/** Side-panel widget showing weekly averages (runs, distance, time, pace), toggle between last 4/12 weeks. */
+/** Side-panel widget showing weekly averages (runs, distance, time, pace, heart rate), toggle between
+ * last 4/12 weeks. */
 export default function AverageStatsCard({ activities, firstDay }: Props) {
   const [weeksCount, setWeeksCount] = useState<(typeof OPTIONS)[number]>(12);
   const stats = useMemo(() => summarizeAverages(activities, firstDay, weeksCount), [activities, firstDay, weeksCount]);
@@ -42,6 +43,10 @@ export default function AverageStatsCard({ activities, firstDay }: Props) {
         <div className="avg-stats-row">
           <span>Avg. pace</span>
           <strong>{stats.avgPaceSecPerKm ? `${formatPace(stats.avgPaceSecPerKm)}/km` : '—'}</strong>
+        </div>
+        <div className="avg-stats-row">
+          <span>Avg. heart rate</span>
+          <strong>{stats.avgHeartRate ? `${Math.round(stats.avgHeartRate)} bpm` : '—'}</strong>
         </div>
       </div>
     </section>

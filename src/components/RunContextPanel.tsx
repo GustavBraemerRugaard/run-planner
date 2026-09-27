@@ -1,47 +1,89 @@
-import { ACTUAL_COLOR, RUN_TYPES, RUN_TYPE_ORDER, formatKm, parseLocalDate, type RunFormWeekContext, type WeekEntry } from '../domain/run';
+import {
+  ACTUAL_COLOR,
+  ACTUAL_TEXT_COLOR,
+  RUN_TYPES,
+  RUN_TYPE_ORDER,
+  formatKm,
+  parseLocalDate,
+  type RunFormWeekContext,
+  type TrainingLoad,
+  type WeekEntry,
+} from '../domain/run';
+import TrainingLoadGauge from './TrainingLoadGauge';
 
 interface Props {
   context: RunFormWeekContext;
+  /** What the run currently being edited/added would do to the acute:chronic training-load ratio if
+   * saved as currently edited (computed "as of" its own date, draft folded in) — shown as a gauge below
+   * the timeline so the panel answers not just "what's around this run" but "what would saving it do". */
+  draftLoad: TrainingLoad;
   /** Desktop only: pixel height of the sibling run-form box to match exactly (scrolling internally
    * if this panel's own content is taller), so the two boxes always end at the same edge instead of
    * the shorter one stretching to fill the taller one's height. Undefined below that breakpoint. */
   matchHeight?: number;
 }
 
-const dayFmt = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+const weekdayFmt = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2);
 
-/** One day's row: the date, and every run (planned or done) on it, or a muted "rest day" placeholder. */
-function DayRow({ date, entries, isDraftDate }: { date: string; entries: WeekEntry[]; isDraftDate: boolean }) {
+/** This day's displayed km and color: actual wins over planned when both exist — the same rule the
+ * domain layer uses for its own day/week totals, so the strip's numbers always agree with the stats
+ * above it. Returns null for a rest day (nothing planned or done). */
+function primaryEntry(entries: WeekEntry[]): { km: number; color: string; textColor: string } | null {
+  if (entries.length === 0) return null;
+  const actual = entries.filter((e) => e.kind === 'actual');
+  const source = actual.length > 0 ? actual : entries;
+  const km = source.reduce((sum, e) => sum + e.km, 0);
+  const rep = source.find((e) => e.isDraft) ?? source[0];
+  return rep.kind === 'actual'
+    ? { km, color: ACTUAL_COLOR, textColor: ACTUAL_TEXT_COLOR }
+    : { km, color: RUN_TYPES[rep.runType!].color, textColor: RUN_TYPES[rep.runType!].textColor };
+}
+
+/** Full detail for every entry that day, for the cell's hover tooltip — the compact pill only has room
+ * for one number, so this is where a day with more than one entry (e.g. an actual run plus the run
+ * currently being edited on the same date) becomes readable. */
+function tooltipFor(entries: WeekEntry[]): string | undefined {
+  if (entries.length === 0) return undefined;
+  return entries.map((e) => `${e.label}${e.isDraft ? ' (editing)' : ''} — ${formatKm(e.km)}k`).join('\n');
+}
+
+/** One day in the compact 7-wide week strip: a date number, plus — if anything happened that day — a
+ * small colored pill with its km (actual-run orange, or the planned run's type color). A day with
+ * nothing planned or done renders as a bare, muted date number ("rest day" readable at a glance without
+ * needing a separate label or row). */
+function StripCell({ date, entries, isDraftDate }: { date: string; entries: WeekEntry[]; isDraftDate: boolean }) {
+  const primary = primaryEntry(entries);
   return (
-    <div className={`form-context-day ${isDraftDate ? 'current' : ''}`}>
-      <div className="form-context-day-date">{dayFmt(parseLocalDate(date))}</div>
-      {entries.length === 0 ? (
-        <div className="form-context-entry empty">—</div>
-      ) : (
-        entries.map((e, i) => (
-          <div key={i} className={`form-context-entry ${e.isDraft ? 'draft' : ''}`}>
-            <span
-              className="form-context-dot"
-              style={{ background: e.kind === 'actual' ? ACTUAL_COLOR : RUN_TYPES[e.runType!].color }}
-            />
-            <span className="form-context-label">
-              {e.label}
-              {e.isDraft && ' (editing)'}
-            </span>
-            <span className="form-context-km">{formatKm(e.km)}k</span>
-          </div>
-        ))
+    <div className={`form-context-cell ${isDraftDate ? 'draft' : ''}`} title={tooltipFor(entries)}>
+      <span className="form-context-cell-date">{parseLocalDate(date).getDate()}</span>
+      {primary && (
+        <span className="form-context-cell-pill" style={{ background: primary.color, color: primary.textColor }}>
+          {formatKm(primary.km)}k
+        </span>
       )}
     </div>
   );
 }
 
 /**
- * Adjacent panel shown next to the run-editing form: the previous and current week's planned/actual
- * runs, this week's total distance, the trailing 7-day rolling total, and this week's run-type mix —
+ * Adjacent panel shown next to the run-editing form: this week's total distance and trailing 7-day
+ * rolling total, this week's run-type mix, and a single continuous previous-week/this-week timeline —
  * so you can see how the run you're adding or editing fits into the surrounding period.
+ *
+ * The two weeks share one "Previous 2 weeks" label and one weekday-letter header (both strips use the
+ * same weekday columns) — a single declaration of what the timeline is, rather than each week repeating
+ * its own "Mon Tue Wed…" header and being listed as 7 separate text rows, or a divider line between the
+ * two strips (the date numbers alone, increasing top to bottom, already read as chronological). That
+ * duplication was the main source of the panel feeling dense/hard to scan. Each day is a compact colored
+ * cell (a mini heatmap) instead of a label + km text row, so a fortnight's pattern of run days vs. rest
+ * days reads in one glance; hover a cell for the full label(s).
+ *
+ * Below the timeline, a training-load gauge (`TrainingLoadGauge`, shared with `ActiveWeekCard`) shows
+ * what saving this run would do to the acute:chronic ratio — forward-looking context this panel didn't
+ * have before, added when the panel's own height stopped naturally matching the form panel's height
+ * (see `matchHeight` below) and there was room to fill with something more useful than blank space.
  */
-export default function RunContextPanel({ context, matchHeight }: Props) {
+export default function RunContextPanel({ context, draftLoad, matchHeight }: Props) {
   const byDate = (entries: WeekEntry[]) => {
     const map = new Map<string, WeekEntry[]>();
     for (const e of entries) map.set(e.date, [...(map.get(e.date) ?? []), e]);
@@ -52,7 +94,7 @@ export default function RunContextPanel({ context, matchHeight }: Props) {
   const maxType = Math.max(1, ...RUN_TYPE_ORDER.map((t) => context.currentWeekByType[t] ?? 0));
 
   return (
-    <div className="form-context" style={matchHeight ? { maxHeight: matchHeight } : undefined}>
+    <div className="form-context" style={matchHeight ? { height: matchHeight, maxHeight: matchHeight } : undefined}>
       <div className="form-context-stats">
         <div>
           <span className="label">This week</span>
@@ -84,19 +126,37 @@ export default function RunContextPanel({ context, matchHeight }: Props) {
         </div>
       )}
 
-      <div className="form-context-week">
-        <span className="label">Previous week</span>
-        {context.prevWeekDates.map((d) => (
-          <DayRow key={d} date={d} entries={prevByDate.get(d) ?? []} isDraftDate={false} />
-        ))}
+      <div className="form-context-timeline">
+        <span className="label">Previous 2 weeks</span>
+
+        <div className="form-context-weekdays">
+          {context.currentWeekDates.map((d) => (
+            <span key={d}>{weekdayFmt(parseLocalDate(d))}</span>
+          ))}
+        </div>
+
+        <div className="form-context-strip">
+          {context.prevWeekDates.map((d) => (
+            <StripCell key={d} date={d} entries={prevByDate.get(d) ?? []} isDraftDate={false} />
+          ))}
+        </div>
+
+        <div className="form-context-strip">
+          {context.currentWeekDates.map((d) => (
+            <StripCell
+              key={d}
+              date={d}
+              entries={currentByDate.get(d) ?? []}
+              isDraftDate={currentByDate.get(d)?.some((e) => e.isDraft) ?? false}
+            />
+          ))}
+        </div>
       </div>
 
-      <div className="form-context-week">
-        <span className="label">This week</span>
-        {context.currentWeekDates.map((d) => (
-          <DayRow key={d} date={d} entries={currentByDate.get(d) ?? []} isDraftDate={currentByDate.get(d)?.some((e) => e.isDraft) ?? false} />
-        ))}
-      </div>
+      <TrainingLoadGauge
+        load={draftLoad}
+        title="Acute:chronic workload ratio if this run is saved as currently edited — a directional injury-risk signal, not a diagnosis."
+      />
     </div>
   );
 }

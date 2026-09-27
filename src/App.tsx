@@ -9,7 +9,7 @@ import RollingCalendar, { type CalendarViewHandle } from './components/RollingCa
 import ListView from './components/ListView';
 import ActivityDetail from './components/ActivityDetail';
 import LatestRunCard from './components/LatestRunCard';
-import WeeklyHistoryList from './components/WeeklyHistoryList';
+import HistoryList from './components/HistoryList';
 import AverageStatsCard from './components/AverageStatsCard';
 import { CALENDAR_ID, DEFAULT_CHART_WEEKS, FIRST_DAY, GOOGLE_CLIENT_ID } from './config';
 import {
@@ -19,6 +19,7 @@ import {
   localDateString,
   newStep,
   parseLocalDate,
+  summarizeActualMonths,
   summarizeActualWeeks,
   summarizeCombinedWeeks,
   toEventInput,
@@ -202,6 +203,7 @@ export default function App() {
   const dayEntries = useMemo(() => buildDayEntries(runs, activities), [runs, activities]);
   const combinedWeeks = useMemo(() => summarizeCombinedWeeks(runs, activities, FIRST_DAY), [runs, activities]);
   const actualWeeks = useMemo(() => summarizeActualWeeks(activities, FIRST_DAY), [activities]);
+  const actualMonths = useMemo(() => summarizeActualMonths(activities), [activities]);
   const latestActivity = activities[0] ?? null;
 
   const todayWeekStart = weekKey(new Date(), FIRST_DAY);
@@ -219,7 +221,8 @@ export default function App() {
 
   const thisWeek = combinedWeeks.get(todayWeekStart) ?? emptyCombinedWeek(todayWeekStart);
   const prevWeekStart = addDaysLocal(todayWeekStart, -7);
-  const prevWeekTotalKm = (combinedWeeks.get(prevWeekStart) ?? emptyCombinedWeek(prevWeekStart)).totalKm;
+  // Actual (Strava) km only — the goal is about runs really done, not what's planned on the calendar.
+  const prevWeekTotalKm = (combinedWeeks.get(prevWeekStart) ?? emptyCombinedWeek(prevWeekStart)).actualKm;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const weekGoalKm = useMemo(() => getWeekGoalKm(todayWeekStart), [todayWeekStart, goalVersion]);
 
@@ -346,7 +349,7 @@ export default function App() {
                   />
                 )}
               </div>
-              <WeeklyHistoryList weeks={actualWeeks} firstDay={FIRST_DAY} />
+              <HistoryList weeks={actualWeeks} months={actualMonths} firstDay={FIRST_DAY} />
             </div>
             <div className="side mobile-section section-trends">
               <div className="side-top" style={calHeight ? { height: calHeight } : undefined}>

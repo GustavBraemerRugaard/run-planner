@@ -10,9 +10,12 @@ import {
   buildDescription,
   buildRunFormWeekContext,
   buildTitle,
+  computeTrainingLoad,
   formatKm,
   formatPace,
   newStep,
+  overlayDraftRun,
+  parseLocalDate,
   totalDistanceKm,
   type DayEntries,
   type Run,
@@ -38,33 +41,51 @@ export default function RunForm({ run, dayEntries, firstDay, saving, onSave, onD
   const [mainSteps, setMainSteps] = useState<Step[]>(
     run.steps.filter((s) => s.kind === 'main').length > 0 ? run.steps.filter((s) => s.kind === 'main') : [newMainStep()],
   );
-  const [description, setDescription] = useState(run.description);
-  const [descTouched, setDescTouched] = useState(run.description !== run.autoDescription);
   const modalRef = useRef<HTMLFormElement | null>(null);
   const [matchHeight, setMatchHeight] = useState<number | undefined>(undefined);
 
-  // On desktop (side-by-side layout) the context panel should match this form's own height exactly
-  // — not stretch the form to match the panel's, which left dead space below the form's buttons.
-  // Below that breakpoint the two boxes stack, so no matching is applied there. The measured height is
-  // also persisted as the app-wide "standard" popup height (see lib/modalSize.ts), so single-panel
-  // popups like the activity-detail view — never open at the same time as this one — can match it too.
+  // On desktop (side-by-side layout) this form and the context panel share one fixed height, measured
+  // once — not continuously re-measured as the form's own content changes (adding/removing a step, a
+  // warm-up/cool-down toggle, etc.) — so the two boxes never visibly grow or shrink while you're editing;
+  // instead, content beyond that fixed height scrolls internally (`.modal`'s own `overflow-y: auto`).
+  // The height is (re-)measured only when it's actually meant to change: once at mount (this run's
+  // initial content decides the box size, same as before), when the layout crosses the 900px breakpoint
+  // (mobile stacks instead, where no matching applies at all), and on a plain window resize (which can
+  // change the effective `max-height: 92vh` cap). Below 900px, no matching is applied — each box just
+  // sizes to its own natural stacked content, same as before.
+  //
+  // The measured height is also persisted as the app-wide "standard" popup height (see lib/modalSize.ts),
+  // so single-panel popups like the activity-detail view — never open at the same time as this one — can
+  // match it too.
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 900px)');
     const el = modalRef.current;
     if (!el) return;
-    const update = () => {
-      const matches = mq.matches;
-      const height = modalRef.current?.getBoundingClientRect().height;
-      setMatchHeight(matches ? height : undefined);
-      if (matches && height) saveStandardModalHeight(height);
+    const measureNatural = (): number => {
+      // Temporarily clear any previously-locked inline height so this measures the form's natural,
+      // un-capped-by-us content height (still capped by the CSS `max-height: 92vh`), not whatever
+      // height happened to be locked in before.
+      const prevHeight = el.style.height;
+      el.style.height = '';
+      const height = el.getBoundingClientRect().height;
+      el.style.height = prevHeight;
+      return height;
     };
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    mq.addEventListener('change', update);
+    const update = () => {
+      if (mq.matches) {
+        const height = measureNatural();
+        setMatchHeight(height);
+        saveStandardModalHeight(height);
+      } else {
+        setMatchHeight(undefined);
+      }
+    };
     update();
+    mq.addEventListener('change', update);
+    window.addEventListener('resize', update);
     return () => {
-      ro.disconnect();
       mq.removeEventListener('change', update);
+      window.removeEventListener('resize', update);
     };
   }, []);
 
@@ -73,7 +94,6 @@ export default function RunForm({ run, dayEntries, firstDay, saving, onSave, onD
     [warmup, mainSteps, cooldown],
   );
   const autoDescription = useMemo(() => buildDescription(steps), [steps]);
-  const shownDescription = descTouched ? description : autoDescription;
   const totalKm = totalDistanceKm(steps);
   const avgPace = averagePaceSecPerKm(steps);
   const title = buildTitle(type, steps);
@@ -84,6 +104,13 @@ export default function RunForm({ run, dayEntries, firstDay, saving, onSave, onD
     () => buildRunFormWeekContext(dayEntries, firstDay, { date, type, steps }, run.id),
     [dayEntries, firstDay, date, type, steps, run.id],
   );
+  // What this run would do to the acute:chronic training-load ratio if saved as currently edited —
+  // computed "as of" the draft's own date, with the draft folded into dayEntries in place of its saved
+  // counterpart (if any), so editing the type/steps/date live-updates the projected load below.
+  const draftLoad = useMemo(() => {
+    const overlaid = overlayDraftRun(dayEntries, { date, type, steps }, run.id);
+    return computeTrainingLoad(overlaid, parseLocalDate(date));
+  }, [dayEntries, date, type, steps, run.id]);
 
   function updateMain(i: number, s: Step) {
     setMainSteps((prev) => prev.map((p, idx) => (idx === i ? s : p)));
@@ -100,7 +127,7 @@ export default function RunForm({ run, dayEntries, firstDay, saving, onSave, onD
       type,
       date,
       steps,
-      description: shownDescription,
+      description: autoDescription,
       autoDescription,
     });
   }
@@ -108,8 +135,11 @@ export default function RunForm({ run, dayEntries, firstDay, saving, onSave, onD
   return (
     <div className="modal-backdrop" onClick={onCancel}>
       <div className="modal-wrap" onClick={(e) => e.stopPropagation()}>
-        <form className="modal" ref={modalRef} onSubmit={submit}>
-          <h2>{run.id ? 'Edit run' : 'New run'}</h2>
+        <form className="modal" ref={modalRef} onSubmit={submit} style={matchHeight ? { height: matchHeight } : undefined}>
+          <h2>
+            {title}
+            <span className="modal-tag">{run.id ? '(editing)' : '(new)'}</span>
+          </h2>
 
           <div className="field">
             <span className="label">Type</span>
@@ -183,39 +213,6 @@ export default function RunForm({ run, dayEntries, firstDay, saving, onSave, onD
             </div>
           </div>
 
-          <label className="field">
-            <div className="steps-head">
-              <span className="label">Calendar title (auto)</span>
-            </div>
-            <input value={title} disabled />
-          </label>
-
-          <label className="field">
-            <div className="steps-head">
-              <span className="label">Description</span>
-              {descTouched && (
-                <button
-                  type="button"
-                  className="btn small"
-                  onClick={() => {
-                    setDescription(autoDescription);
-                    setDescTouched(false);
-                  }}
-                >
-                  Reset to auto
-                </button>
-              )}
-            </div>
-            <textarea
-              rows={4}
-              value={shownDescription}
-              onChange={(e) => {
-                setDescription(e.target.value);
-                setDescTouched(true);
-              }}
-            />
-          </label>
-
           <div className="actions">
             {run.id && onDelete && (
               <button
@@ -239,7 +236,7 @@ export default function RunForm({ run, dayEntries, firstDay, saving, onSave, onD
           </div>
         </form>
 
-        <RunContextPanel context={formContext} matchHeight={matchHeight} />
+        <RunContextPanel context={formContext} draftLoad={draftLoad} matchHeight={matchHeight} />
       </div>
     </div>
   );

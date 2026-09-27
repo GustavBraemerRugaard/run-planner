@@ -57,12 +57,12 @@ the same way as desktop. What changes is size and what's stacked below it:
   screen can't spare as much vertical room for the calendar as a desktop side-by-side layout can, given
   the tab bar and single-column stacking. This is a hard, explicit override
   (`.rolling-cal, .list-view { height: 312px; max-height: 312px; }`), not a proportional shrink.
-- `WeeklyHistoryList` sits directly below the calendar in the same `.cal-col`, same as desktop — but
+- `HistoryList` sits directly below the calendar in the same `.cal-col`, same as desktop — but
   since there's no side-rail height-matching happening at this width (the `calHeight`-driven
   `.side-top` sizing in `App.tsx` is explicitly gated to `matchMedia('(min-width: 1000px)')` and passes
   `undefined` below it), the weekly-history list here is simply its own natural, unconstrained height —
   it is **not** coupled to anything else's height on mobile the way it is on desktop.
-- **At `max-width: 640px`**, `WeeklyHistoryList`'s rows additionally restructure: the fixed 6-column
+- **At `max-width: 640px`**, `HistoryList`'s rows additionally restructure: the fixed 6-column
   grid (`1fr 50px 84px 104px 90px 76px`) can't stay readable this narrow, so `.week-history-row`
   switches to a single column (`grid-template-columns: 1fr`) with the date range on its own line and
   `.week-history-stats` becoming a `flex-wrap` row that wraps the 5 stat entries onto as many lines as

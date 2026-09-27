@@ -394,6 +394,26 @@ export function buildDayEntries(runs: Run[], activities: StravaActivity[]): Map<
   return map;
 }
 
+/**
+ * A day-entries map with the run currently being edited/added folded in on its date (replacing its own
+ * saved copy via `excludeRunId`, so an edited run isn't double-counted) — for computing training load
+ * "as if this draft were saved", so the run-editing form can show what effect it would have before you
+ * actually save it. The draft doesn't need real `id`/`description` fields to affect the load calculation
+ * (only `type`/`date`/`steps` feed into it), so those are filled with harmless placeholders.
+ */
+export function overlayDraftRun(
+  dayEntries: Map<string, DayEntries>,
+  draft: { date: string; type: RunType; steps: Step[] },
+  excludeRunId: string | undefined,
+): Map<string, DayEntries> {
+  const draftRun: Run = { id: 'draft', type: draft.type, date: draft.date, steps: draft.steps, description: '', autoDescription: '' };
+  const existing = dayEntries.get(draft.date);
+  const planned = (existing?.planned ?? []).filter((r) => r.id !== excludeRunId);
+  const next = new Map(dayEntries);
+  next.set(draft.date, { date: draft.date, actual: existing?.actual ?? [], planned: [...planned, draftRun] });
+  return next;
+}
+
 export interface CombinedWeekSummary extends WeekSummary {
   /** km that came from completed (Strava) runs, a subset of totalKm. */
   actualKm: number;
@@ -439,8 +459,9 @@ export function summarizeCombinedWeeks(
   return map;
 }
 
-export interface ActualWeekSummary {
-  weekStart: string;
+export interface ActualPeriodSummary {
+  /** Start of the period (a week's Monday-per-config, or a month's 1st), as YYYY-MM-DD. */
+  periodStart: string;
   runs: number;
   totalKm: number;
   totalTimeSec: number;
@@ -448,13 +469,21 @@ export interface ActualWeekSummary {
   avgHeartRate: number | null;
 }
 
-/** Pure "what actually happened" weekly stats from Strava, for the historic-weeks list. */
-export function summarizeActualWeeks(activities: StravaActivity[], firstDay: number): Map<string, ActualWeekSummary> {
-  const map = new Map<string, ActualWeekSummary>();
+/** Month-start (the 1st) of the month containing the given date, as YYYY-MM-DD in local time — the
+ * monthly equivalent of `weekKey`, for grouping actual (Strava) history by calendar month. */
+export function monthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+/** Pure "what actually happened" stats from Strava, grouped by whatever period `keyFn` buckets a date
+ * into (a week or a month) — shared by `summarizeActualWeeks` and `summarizeActualMonths` below, so the
+ * historic-history list's week and month views are guaranteed to compute totals/averages the same way. */
+function summarizeActualPeriods(activities: StravaActivity[], keyFn: (date: Date) => string): Map<string, ActualPeriodSummary> {
+  const map = new Map<string, ActualPeriodSummary>();
   const hrSum = new Map<string, { sum: number; time: number }>();
   for (const a of activities) {
-    const key = weekKey(parseLocalDate(a.date), firstDay);
-    const w = map.get(key) ?? { weekStart: key, runs: 0, totalKm: 0, totalTimeSec: 0, avgPaceSecPerKm: null, avgHeartRate: null };
+    const key = keyFn(parseLocalDate(a.date));
+    const w = map.get(key) ?? { periodStart: key, runs: 0, totalKm: 0, totalTimeSec: 0, avgPaceSecPerKm: null, avgHeartRate: null };
     w.runs += 1;
     w.totalKm += a.distanceKm;
     w.totalTimeSec += a.movingTimeSec;
@@ -474,6 +503,14 @@ export function summarizeActualWeeks(activities: StravaActivity[], firstDay: num
   return map;
 }
 
+export function summarizeActualWeeks(activities: StravaActivity[], firstDay: number): Map<string, ActualPeriodSummary> {
+  return summarizeActualPeriods(activities, (d) => weekKey(d, firstDay));
+}
+
+export function summarizeActualMonths(activities: StravaActivity[]): Map<string, ActualPeriodSummary> {
+  return summarizeActualPeriods(activities, monthKey);
+}
+
 export interface AverageStats {
   weeksCount: number;
   avgRunsPerWeek: number;
@@ -481,11 +518,14 @@ export interface AverageStats {
   avgTimeSecPerWeek: number;
   /** Total time / total distance across the whole window — not an average of per-week paces. */
   avgPaceSecPerKm: number | null;
+  /** Time-weighted average heart rate across the window (each run's average HR weighted by its moving
+   * time), null if no run in the window recorded heart rate. */
+  avgHeartRate: number | null;
 }
 
 /**
  * Average weekly stats from actual Strava data over the last `weeksCount` weeks, including the
- * current (possibly partial) week, so the averages line up with what `WeeklyHistoryList` shows.
+ * current (possibly partial) week, so the averages line up with what `HistoryList`'s week view shows.
  */
 export function summarizeAverages(
   activities: StravaActivity[],
@@ -500,11 +540,17 @@ export function summarizeAverages(
   let runs = 0;
   let totalKm = 0;
   let totalTimeSec = 0;
+  let hrSum = 0;
+  let hrTime = 0;
   for (const a of activities) {
     if (a.date >= startStr) {
       runs += 1;
       totalKm += a.distanceKm;
       totalTimeSec += a.movingTimeSec;
+      if (a.averageHeartRate != null) {
+        hrSum += a.averageHeartRate * a.movingTimeSec;
+        hrTime += a.movingTimeSec;
+      }
     }
   }
   return {
@@ -513,6 +559,7 @@ export function summarizeAverages(
     avgKmPerWeek: totalKm / weeksCount,
     avgTimeSecPerWeek: totalTimeSec / weeksCount,
     avgPaceSecPerKm: totalKm > 0 ? totalTimeSec / totalKm : null,
+    avgHeartRate: hrTime > 0 ? hrSum / hrTime : null,
   };
 }
 

@@ -27,6 +27,11 @@ interface Props {
  * desktop top strip and as the phone's "Today" tab — the one place meant to answer "where do things
  * stand right now" without hunting across the other widgets for it. The run-type breakdown lives on
  * the calendar itself, so it isn't duplicated here.
+ *
+ * The goal/progress bar counts only actually-completed (Strava) distance — never planned-but-not-run
+ * calendar events — since a goal is a target for runs you've actually done, not for what's on the
+ * calendar. `thisWeek.actualKm` (not `.totalKm`, which also includes planned km) is used throughout
+ * this section for that reason.
  */
 export default function TodayCard({ dayEntries, thisWeek, prevWeekTotalKm, goalKm, onSetGoal, onSelectActivity, onSelectDate }: Props) {
   const [editingGoal, setEditingGoal] = useState(false);
@@ -57,8 +62,10 @@ export default function TodayCard({ dayEntries, thisWeek, prevWeekTotalKm, goalK
     todayLine = { label: 'No run planned today', sub: '', color: 'transparent' };
   }
 
-  const dir = goalKm == null ? trend(thisWeek.totalKm, prevWeekTotalKm) : null;
-  const pct = goalKm ? Math.min(100, (thisWeek.totalKm / goalKm) * 100) : Math.min(100, (thisWeek.totalKm / (thisWeek.totalKm || 1)) * 100);
+  const dir = goalKm == null ? trend(thisWeek.actualKm, prevWeekTotalKm) : null;
+  const pct = goalKm
+    ? Math.min(100, (thisWeek.actualKm / goalKm) * 100)
+    : Math.min(100, (thisWeek.actualKm / (thisWeek.actualKm || 1)) * 100);
 
   return (
     <section className="today-card">
@@ -108,7 +115,7 @@ export default function TodayCard({ dayEntries, thisWeek, prevWeekTotalKm, goalK
           <>
             <div className="today-week-total">
               <div>
-                <strong>{formatKm(thisWeek.totalKm)} km</strong>
+                <strong>{formatKm(thisWeek.actualKm)} km</strong>
                 {goalKm != null ? (
                   <span className="today-sub"> of {formatKm(goalKm)} km goal</span>
                 ) : (

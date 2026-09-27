@@ -75,10 +75,14 @@ src/
     LatestRunCard.tsx       — side-panel: most recent Strava run
     ActiveWeekCard.tsx      — side-panel: the calendar's currently-browsed week + training load (ACWR)
     AverageStatsCard.tsx    — side-panel: weekly averages over last 4 or 12 weeks
-    WeeklyHistoryList.tsx   — below the calendar: scrollable list of the last 12 weeks, actual data
+    HistoryList.tsx         — below the calendar: scrollable list of the last 12 weeks/months (togglable),
+                              actual data
     MileageChart.tsx        — side-panel: weekly mileage bar chart with rotated date labels
     RunForm.tsx             — create/edit-run modal (the form half of the two-panel popup)
-    RunContextPanel.tsx     — create/edit-run modal (the context half — surrounding week's runs)
+    RunContextPanel.tsx     — create/edit-run modal (the context half — surrounding week's runs +
+                              a training-load preview for the run being edited)
+    TrainingLoadGauge.tsx   — the ACWR zone/gauge/hint visual, shared by ActiveWeekCard and
+                              RunContextPanel so "how risky is this load" never diverges between them
     ActivityDetail.tsx      — view-a-completed-run modal (laps, pace/HR charts)
     StepEditor.tsx          — one warm-up/main/cool-down step row inside RunForm
     DateField.tsx           — dd/mm/yyyy masked date input + native picker button
@@ -95,14 +99,18 @@ docs/                       — this documentation set
   never entered directly, so the calendar title and stats can't drift from the actual workout plan.
 - **RunType** — `easy | tempo | long | intervals | race` — each with a fixed pastel color + text color
   (`RUN_TYPES` in `domain/run.ts`) used consistently everywhere a planned run is shown as a colored
-  chip/pill/segment (calendar pills, chart segments, form-context dots, bar chart, etc.).
+  chip/pill/segment (calendar pills, chart segments, form-context timeline cells, bar chart, etc.).
 - **Completed runs** (Strava activities) are always shown in one fixed color (`ACTUAL_COLOR = #f97316`,
   orange), distinct from every planned-run color, so "done" vs "planned" is always visually obvious
   regardless of run type.
 - **Training load (ACWR)** — acute:chronic workload ratio, EWMA-smoothed (7-day acute / 28-day chronic,
   Foster's session-RPE-style load), classified into 4 zones (low / optimal / elevated / high) at
-  Gabbett (2016) thresholds (0.8 / 1.3 / 1.5). See `computeTrainingLoad` in `domain/run.ts` and the
-  Active Week card in the layout docs for how it's presented.
+  Gabbett (2016) thresholds (0.8 / 1.3 / 1.5). See `computeTrainingLoad` in `domain/run.ts`, the shared
+  `TrainingLoadGauge` component for how the zone/gauge/hint is presented (used by both `ActiveWeekCard`,
+  for the currently-browsed week's actual load, and `RunContextPanel`, for what the run being edited
+  would do to that load if saved — via `overlayDraftRun`, which folds the draft into `dayEntries` in
+  place of its own saved copy before computing), and the Active Week card / RunForm sections in the
+  layout docs for how each is presented.
 
 ## Design tokens (`:root` in `styles.css`)
 
@@ -150,29 +158,44 @@ widget when an existing token already means the same thing.
   pattern rather than introducing a native `<select>` or a different toggle style.
 - **Planned vs. actual**: a planned run is always colored by its `RunType` (pastel bg + matching dark
   text); a completed (Strava) run is always the fixed orange `ACTUAL_COLOR`. This distinction is drawn
-  everywhere a run appears (calendar pills, list entries, bar/chart segments, form-context dots) — never
-  invert or blend this convention for a new surface.
+  everywhere a run appears (calendar pills, list entries, bar/chart segments, form-context timeline
+  cells) — never invert or blend this convention for a new surface.
 - **Equal-gap-spread over equal-width-grid** for a row of natural-width stats (`.latest-run-stats`,
   `.activity-totals`, `.today-week-total`, `.topbar` vs. the 300px side rail): `justify-content:
   space-between` over naturally-sized items, so the *last* item's own right edge lands flush with the
   container's right edge — not an equal-width grid, which would leave left-aligned text short of the
   edge. Reuse this trick for new "a few stats in a row" widgets.
 - **Always-render-all-slots-with-a-placeholder**: widgets that have several potential values per run
-  (LatestRunCard's 5 metric slots, WeeklyHistoryList's 5 stat columns, ActiveWeekCard's training-load
+  (LatestRunCard's 5 metric slots, HistoryList's 5 stat columns, ActiveWeekCard's training-load
   block) always render every slot, using "—" or a neutral fallback state for missing data, rather than
   conditionally omitting a slot. This exists specifically so a card's size and layout stay constant
   regardless of which particular data happens to be available for the thing it's currently showing —
   see `docs/LAYOUT_DESKTOP.md`'s Active Week Card section for the fullest example of why this matters
   (a card that resizes as you browse between weeks reads as broken/jittery).
 - **Height-matching via JS + ResizeObserver + matchMedia**, not CSS alone: several places measure one
-  element's actual rendered height and apply it as a sibling's explicit height/maxHeight (side-top ↔
-  calendar box; RunForm ↔ RunContextPanel; the shared "standard modal height" in `modalSize.ts` between
-  RunForm and ActivityDetail). CSS `align-items: stretch` cannot be used for these because a stretched
-  sibling's *own* border would land in the wrong place (see the `align-items: normal` computes to
-  `stretch`, not `flex-start`, gotcha documented inline in `styles.css` above `.modal-wrap`'s
-  `≥900px` rule) — always gate this kind of JS sizing behind the same `matchMedia` breakpoint used by
-  the corresponding CSS rule, and disable it (pass `undefined`) below that breakpoint so mobile's
-  natural, content-sized stacking isn't overridden.
+  element's actual rendered height and apply it as a sibling's explicit height (side-top ↔ calendar box;
+  RunForm ↔ RunContextPanel; the shared "standard modal height" in `modalSize.ts` between RunForm and
+  ActivityDetail). CSS `align-items: stretch` cannot be used for these because a stretched sibling's
+  *own* border would land in the wrong place (see the `align-items: normal` computes to `stretch`, not
+  `flex-start`, gotcha documented inline in `styles.css` above `.modal-wrap`'s `≥900px` rule) — always
+  gate this kind of JS sizing behind the same `matchMedia` breakpoint used by the corresponding CSS
+  rule, and disable it (pass `undefined`) below that breakpoint so mobile's natural, content-sized
+  stacking isn't overridden. **Apply the measured number as `height`, not only `max-height`** — `max-
+  height` alone only caps a box, it doesn't force a box whose own content is *shorter* than that cap to
+  grow and fill it, so if the shorter side's content ever gets less tall (as happened when
+  `RunContextPanel`'s old day-list design was replaced with the more compact timeline), the two sides
+  silently stop lining up at the bottom again despite the "matching" code still running unchanged. Set
+  both `height` and `max-height` to the measured value (the latter kept only as a redundant safety net,
+  e.g. against a viewport shorter than the measured number) and keep `overflow-y: auto` for the case
+  where content ends up taller than the fixed height instead.
+  **`RunForm` deliberately does not use a `ResizeObserver` on itself**, unlike the other cases here
+  (side-top ↔ calendar box does, since the calendar's height legitimately can change and should be
+  tracked) — a `ResizeObserver` on the form would fire every time the form's *own* content changes size
+  (adding/removing a step, toggling warm-up/cool-down), which is exactly the "box visibly grows while
+  you're mid-edit" behavior that was reported as a bug and fixed. Instead `RunForm` measures once on
+  mount plus on a plain `window resize` listener and the `matchMedia` breakpoint's `change` event only —
+  deliberately blind to its own content's size changes, so the measured/locked height only ever changes
+  for a reason unrelated to what you're currently typing into the form.
 - **No scrollbar handles, anywhere, ever** — an explicit, standing requirement, not just a style
   preference for a few specific panels. In `styles.css` this is one universal rule (`* { scrollbar-width:
   none; -ms-overflow-style: none; } *::-webkit-scrollbar { display: none; }`), deliberately applied to
@@ -192,7 +215,7 @@ widget when an existing token already means the same thing.
 | `min-width: 900px` | Modals switch from a single stacked column to two side-by-side panels (RunForm + RunContextPanel), and single-panel popups adopt the shared "standard height". |
 | `min-width: 700px` | Modal backdrop centers the modal (`align-items: center`, with padding) instead of docking it as a bottom sheet; modal corners become fully rounded (`--radius` on all 4 corners) instead of only the top 2. |
 | `max-width: 700px` | The phone bottom tab bar appears; only one of Today/Calendar/Trends section shows at a time; calendar/list-view height shrinks to 312px. |
-| `max-width: 640px` | `WeeklyHistoryList` rows switch from the 6-column grid to a stacked/wrapped layout (couldn't keep 6 readable columns this narrow). |
+| `max-width: 640px` | `HistoryList` rows switch from the 6-column grid to a stacked/wrapped layout (couldn't keep 6 readable columns this narrow). |
 
 See `docs/LAYOUT_DESKTOP.md` and `docs/LAYOUT_MOBILE.md` for the full object-by-object breakdown at
 each side of the `1000px` line.

@@ -331,8 +331,19 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .latest-run-stats strong { font-size: 1rem; }
 .latest-run-stats span { color: var(--muted); font-size: var(--fs-micro); }
 
-/* Weekly history list — every row shares one grid, so each metric column lines up across weeks */
+/* History list — every row shares one grid, so each metric column lines up across periods. Togglable
+   between week and calendar-month granularity (`.week-history-toggle`, the same segmented-toggle visual
+   formula as `.avg-stats-toggle`, `.seg-toggle`, etc. — see docs/ARCHITECTURE.md's "Segmented toggle"
+   pattern note) — only the toggle and the row count/labels change between modes, the grid/shell below
+   is shared. */
 .week-history { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+.week-history-head { display: flex; justify-content: space-between; align-items: center; }
+.week-history-toggle { display: flex; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
+.week-history-toggle button {
+  font: inherit; font-size: 0.75rem; padding: 3px 9px; border: none; background: var(--panel);
+  color: var(--text); cursor: pointer;
+}
+.week-history-toggle button.active { background: var(--accent); color: var(--accent-text); }
 /* ~2 rows shorter than showing every visible row at a glance used to (each row + its gap is ~43px) —
    the mileage chart beside it is sized to match this list's own rendered height (see App.tsx/styles.css
    .side-top), so shortening this list also shortens the chart to match, automatically. */
@@ -390,6 +401,10 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 }
 @media (min-width: 700px) { .modal { border-radius: 2px; } }
 .modal h2 { margin: 0; font-size: 1.15rem; text-transform: uppercase; letter-spacing: 0.04em; }
+/* New/edit indicator next to a run-form h2 that now shows the run's own (computed) title instead of a
+   static "New run"/"Edit run" label — kept as a small muted parenthetical suffix so it reads as a status
+   note rather than part of the title itself. Text only, never written to the saved calendar-event title. */
+.modal h2 .modal-tag { margin-left: 8px; font-size: 0.75em; font-weight: 400; color: var(--muted); letter-spacing: normal; }
 
 @media (min-width: 900px) {
   /* align-items must be set to flex-start explicitly here — the flex default ("normal") actually
@@ -420,17 +435,39 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .form-context-type-row { display: grid; grid-template-columns: 60px 1fr 40px; align-items: center; gap: 8px; font-size: var(--fs-caption); }
 .form-context-type-label { color: var(--muted); }
 .form-context-type-km { text-align: right; color: var(--muted); }
-.form-context-week { display: grid; gap: 6px; }
-.form-context-day { display: grid; gap: 2px; padding: 5px 0; border-bottom: 1px solid var(--border); }
-.form-context-day:last-child { border-bottom: none; }
-.form-context-day.current { background: color-mix(in srgb, var(--accent) 6%, transparent); border-radius: 2px; padding: 5px 6px; }
-.form-context-day-date { font-size: var(--fs-caption); color: var(--muted); }
-.form-context-entry { display: flex; align-items: center; gap: 6px; font-size: var(--fs-label); }
-.form-context-entry.empty { color: var(--muted); }
-.form-context-entry.draft { font-weight: 600; }
-.form-context-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
-.form-context-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.form-context-km { color: var(--muted); flex: none; }
+/* Previous 2 weeks' timeline: one label declaring what it is, one shared weekday header, two 7-cell
+   strips with no divider between them (the date numbers, increasing top to bottom, already read as
+   chronological) — replaces an earlier design of two separately-labeled 7-row day lists (each row:
+   colored dot + label + km), which read as dense/hard to scan since the two weeks' identical
+   "Mon Tue Wed…" headers and near-identical row shapes repeated with no visual distinction between them,
+   and a since-removed intermediate design that used a divider line between the two strips instead of a
+   single label above (removed because a divider between two directly-adjacent strips reads as more
+   separation than intended — the two weeks are meant to feel like one continuous fortnight). */
+.form-context-timeline { display: grid; gap: 6px; }
+.form-context-weekdays {
+  display: grid; grid-template-columns: repeat(7, 1fr); text-align: center;
+  font-size: var(--fs-micro); color: var(--muted);
+}
+.form-context-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.form-context-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 3px 1px 5px;
+  border-radius: 2px; min-width: 0;
+}
+/* The day currently being edited in the form (which may not be saved yet) gets a highlighted cell so
+   it's identifiable in the strip regardless of what else happened that day — this replaced the earlier
+   day-row design's "(editing)" text suffix, which no longer fits the compact cell (it's still in the
+   hover tooltip). */
+.form-context-cell.draft { background: color-mix(in srgb, var(--accent) 12%, transparent); outline: 1px solid var(--accent); }
+.form-context-cell-date { font-size: var(--fs-caption); color: var(--muted); }
+.form-context-cell-pill {
+  font-size: var(--fs-micro); font-weight: 600; border-radius: 2px; padding: 2px 3px;
+  min-width: 26px; max-width: 100%; text-align: center; overflow: hidden; text-overflow: clip; white-space: nowrap;
+}
+/* .training-load (shared with ActiveWeekCard, see TrainingLoadGauge.tsx) brings its own margin-top —
+   here that would stack on top of .form-context's own `gap: 14px`, doubling the space above it. Only
+   the border-top/padding-top (the visual divider) are wanted here; the vertical gap itself is already
+   provided by the parent grid, same as every other block in this panel. */
+.form-context > .training-load { margin-top: 0; }
 
 .field { display: grid; gap: 5px; min-width: 0; }
 .field.grow { flex: 1; }
