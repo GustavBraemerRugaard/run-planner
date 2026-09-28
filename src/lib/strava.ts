@@ -1,4 +1,5 @@
 import { STRAVA_CLIENT_ID, STRAVA_SCOPE, STRAVA_WORKER_URL } from '../config';
+import { despikeSeries } from './streamMath';
 
 /**
  * Strava connection. Unlike Google's token flow, Strava's OAuth needs a client secret to exchange
@@ -360,4 +361,116 @@ export async function getActivityDetail(id: number): Promise<ActivityDetail> {
       averageCadenceSpm: l.average_cadence != null ? l.average_cadence * 2 : null,
     })),
   };
+}
+
+// ---- Detailed (streams) pace/HR data --------------------------------------------------------------
+
+export interface StreamPoint {
+  /** Seconds since the activity started. */
+  t: number;
+  distKm: number;
+  paceSecPerKm: number | null;
+  /** Null when this bucket has no heartrate reading — the activity has no HR strap at all, or a brief
+   * sensor dropout. */
+  heartRate: number | null;
+}
+
+interface RawStreams {
+  time?: { data: number[] };
+  distance?: { data: number[] };
+  heartrate?: { data: number[] };
+  velocity_smooth?: { data: number[] };
+}
+
+/** Every StreamChart reading is bucketed to this width — the detailed-but-not-overwhelming middle
+ * ground between Strava's raw (device-resolution, usually ~1Hz) samples and the handful of lap
+ * averages `getActivityDetail` returns. Chosen after comparing a live preview at several resolutions
+ * and rolling-average window sizes with the person this app is for. */
+const STREAM_BUCKET_SEC = 10;
+
+/**
+ * Despiking thresholds passed to `despikeSeries` (`lib/streamMath.ts`) — see that function's doc
+ * comment for what each field means. Deliberately generous on the absolute range (a real sprint
+ * bucket or a real near-walk pace shouldn't get nulled out), tight enough on the jump/neighbor-
+ * agreement pair to only catch a genuinely isolated bad bucket, never a real multi-bucket surge/stop.
+ *
+ * Pace's `max` (1200 sec/km = 20:00/km) is the one doing the most work in practice: pace is
+ * `1000 / speed`, so a bucket where the runner is essentially stationary (stopped at a light) has a
+ * speed near zero and a pace that mathematically blows up toward infinity — a real near-stop, but not
+ * a meaningful "pace" to plot, and this is what was dominating the chart's y-axis before despiking was
+ * added. `min` (90 sec/km = 1:30/km) guards the opposite case, an impossibly fast GPS-jump bucket.
+ */
+const PACE_DESPIKE = { min: 90, max: 1200, jumpThreshold: 90, neighborAgreement: 20 };
+const HR_DESPIKE = { min: 30, max: 230, jumpThreshold: 25, neighborAgreement: 8 };
+
+/**
+ * Per-~10s-bucket pace/HR for one activity, resampled from Strava's raw time-series streams
+ * (`GET /activities/{id}/streams`) — the detailed alternative to `getActivityDetail`'s six-or-so lap
+ * averages, feeding `StreamChart` (the default pace/HR line charts). Each bucket averages every raw
+ * sample whose `time` falls in that window, so a single momentary HR-strap glitch doesn't produce a
+ * wild outlier point the way taking one raw sample every 10s would; each metric is then despiked
+ * (`despikeSeries`, see `PACE_DESPIKE`/`HR_DESPIKE` above) to catch what bucket-averaging alone
+ * doesn't — an isolated bad bucket, or pace's near-zero-speed blow-up — *before* any caller's own
+ * further smoothing on top (see `lib/streamMath.ts`'s `trailingRollingAverage`) ever sees it; this
+ * function resamples and despikes, it doesn't apply that further smoothing itself. No `latlng` is
+ * requested — there's no map or route visualization in the app to use it.
+ *
+ * Returns `[]` for an activity with no `time`/`distance` stream at all (rare — an old or
+ * third-party-imported activity occasionally lacks even these). A missing `heartrate` stream, or a
+ * bucket a despike pass removed, leaves that field `null` on that point instead (e.g. no HR strap that
+ * run) — `StreamChart` can still show pace with no HR line, or a small gap where a bucket was removed.
+ */
+export async function getActivityStreams(id: number): Promise<StreamPoint[]> {
+  const raw = await api<RawStreams>(
+    `/activities/${id}/streams?keys=time,distance,heartrate,velocity_smooth&key_by_type=true`,
+  ).catch(() => ({}) as RawStreams);
+  const time = raw.time?.data;
+  const distance = raw.distance?.data;
+  if (!time || !distance || time.length === 0) return [];
+
+  const heartrate = raw.heartrate?.data;
+  const velocity = raw.velocity_smooth?.data;
+
+  function avgOf(idxs: number[], arr?: number[]): number | null {
+    if (!arr) return null;
+    let sum = 0;
+    let n = 0;
+    for (const idx of idxs) {
+      const v = arr[idx];
+      if (v != null) {
+        sum += v;
+        n++;
+      }
+    }
+    return n > 0 ? sum / n : null;
+  }
+
+  const points: StreamPoint[] = [];
+  const totalSec = time[time.length - 1];
+  let i = 0;
+  for (let bucketStart = 0; bucketStart <= totalSec; bucketStart += STREAM_BUCKET_SEC) {
+    const bucketEnd = bucketStart + STREAM_BUCKET_SEC;
+    const idxs: number[] = [];
+    while (i < time.length && time[i] < bucketEnd) {
+      if (time[i] >= bucketStart) idxs.push(i);
+      i++;
+    }
+    if (idxs.length === 0) continue;
+    const avgVelocity = avgOf(idxs, velocity);
+    points.push({
+      t: bucketStart,
+      distKm: distance[idxs[idxs.length - 1]] / 1000,
+      paceSecPerKm: avgVelocity && avgVelocity > 0 ? 1000 / avgVelocity : null,
+      heartRate: avgOf(idxs, heartrate),
+    });
+  }
+
+  const despikedPace = despikeSeries(points.map((p) => p.paceSecPerKm), PACE_DESPIKE);
+  const despikedHr = despikeSeries(points.map((p) => p.heartRate), HR_DESPIKE);
+  points.forEach((p, i) => {
+    p.paceSecPerKm = despikedPace[i];
+    p.heartRate = despikedHr[i];
+  });
+
+  return points;
 }

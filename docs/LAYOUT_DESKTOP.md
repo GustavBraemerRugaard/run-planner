@@ -258,8 +258,22 @@ still match (they were last verified pixel-identical at 860×669).
     bottom edge, with no visible scrollbar handle (see `docs/ARCHITECTURE.md`'s "no scrollbar handles,
     anywhere" rule — applies here same as everywhere else in the app).
 - **ActivityDetail** (`.modal-wrap.single`, one panel, `max-width: 860px`): activity name/date header,
-  a totals row (same equal-gap-spread pattern as LatestRunCard), pace and HR lap-by-lap bar charts
-  (`LapChart` — bar width proportional to lap distance, y-axis auto-scaled with padding so no bar
-  touches the plot edge, x-axis in km), then a full laps table, then a Close button. Its `.modal`
-  height is forced (via `modalSize.ts`) to the shared standard height regardless of how many laps this
-  particular activity has, scrolling internally (`overflow-y: auto`) if it's a longer run.
+  a totals row (same equal-gap-spread pattern as LatestRunCard), a **Pace & Heart Rate** section that
+  defaults to the continuous **stream chart** (`StreamChart.tsx`) with a toggle to the older per-lap bar
+  chart (`LapChart`) when the run has laps too, then a full laps table, then a Close button. Its
+  `.modal` height is forced (via `modalSize.ts`) to the shared standard height regardless of how much of
+  this content a given activity has, scrolling internally (`overflow-y: auto`) if it's a longer run.
+  There is deliberately no route/map visualization here — two different approaches were tried (a
+  Leaflet + OpenStreetMap-tiles basemap, then a custom SVG route line colored by a pace/HR gradient) and
+  both were dropped; the view is pace/HR data only.
+  - **Pace & Heart Rate** (`.chart-mode-head`/`.chart-mode-toggle`, a `.seg-toggle`): defaults to
+    **Streams** (`StreamChart.tsx`, `.stream-charts`/`.stream-chart-block`) — a continuous line through
+    every ~10s-bucketed, 30s-trailing-rolling-averaged stream sample (see `docs/ARCHITECTURE.md`'s
+    "Streams" entry for why those numbers), with the same axis-tick styling as the old bar chart
+    (`lib/chartMath.ts`, shared with `LapChart`) plus a hover crosshair + tooltip that tracks the
+    nearest sample as the cursor moves — validated in a live side-by-side comparison against the lap
+    view before this was built. The **Laps** toggle switches to the original per-lap bar chart
+    (`LapChart`, `.lap-charts`/`.lap-chart-block`, unchanged from before). The toggle itself only
+    appears when both views have enough data to show (more than one lap *and* more than one stream
+    sample); with only one of the two, that one just renders with no toggle, same "don't show a toggle
+    with an empty option" idea as elsewhere in the app.

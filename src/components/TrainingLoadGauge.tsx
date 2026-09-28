@@ -18,9 +18,9 @@ const GAUGE_STOPS: Record<TrainingLoadZone, number> = { low: 0.8, optimal: 1.3, 
 
 interface Props {
   load: TrainingLoad;
-  /** Overrides the default hover tooltip — e.g. to note that this particular gauge includes a draft
-   * run that hasn't been saved yet. */
-  title?: string;
+  /** Overrides the default hover tooltip text — e.g. to note that this particular gauge includes a
+   * draft run that hasn't been saved yet. */
+  tooltip?: string;
 }
 
 /**
@@ -31,18 +31,12 @@ interface Props {
  * run currently being edited would do to that load if saved), so the visual language for "how risky is
  * this load" never diverges between the two surfaces.
  */
-export default function TrainingLoadGauge({ load, title }: Props) {
+export default function TrainingLoadGauge({ load, tooltip }: Props) {
   const zoneInfo = load.acwr != null ? ZONE_INFO[load.zone] : null;
   const markerPct = load.acwr == null ? null : Math.min(100, (Math.min(load.acwr, GAUGE_MAX) / GAUGE_MAX) * 100);
 
   return (
-    <div
-      className="training-load"
-      title={
-        title ??
-        'Acute:chronic workload ratio (7-day vs 28-day training load, EWMA-smoothed) — a directional injury-risk signal, not a diagnosis.'
-      }
-    >
+    <div className="training-load hovertip-host">
       <div className="training-load-head">
         <span className="label">Training load</span>
         <strong className={`training-load-zone zone-${zoneInfo ? load.zone : 'low'}`}>
@@ -66,6 +60,12 @@ export default function TrainingLoadGauge({ load, title }: Props) {
           'Not enough history yet for a ratio.'
         )}
       </div>
+      <span className="hovertip">
+        <span className="hovertip-text">
+          {tooltip ??
+            'Acute:chronic workload ratio (7-day vs 28-day training load, EWMA-smoothed) — a directional injury-risk signal, not a diagnosis.'}
+        </span>
+      </span>
     </div>
   );
 }

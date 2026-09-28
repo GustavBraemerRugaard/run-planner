@@ -1,5 +1,5 @@
 import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ACTUAL_COLOR, ACTUAL_TEXT_COLOR, RUN_TYPES, buildTitle, formatKm, localDateString, parseLocalDate, totalDistanceKm, weekKey, type DayEntries, type Run } from '../domain/run';
+import { ACTUAL_COLOR, ACTUAL_TEXT_COLOR, RUN_TYPES, buildDescription, formatKm, localDateString, parseLocalDate, totalDistanceKm, weekKey, type DayEntries, type Run } from '../domain/run';
 import type { StravaActivity } from '../lib/strava';
 
 interface Props {
@@ -191,30 +191,52 @@ function WeekRow({
                 <button
                   key={`a${a.id}`}
                   type="button"
-                  className="pill actual"
+                  className="pill actual hovertip-host"
                   style={{ background: ACTUAL_COLOR, color: ACTUAL_TEXT_COLOR }}
                   onClick={(e) => {
                     e.stopPropagation();
                     onSelectActivity(a);
                   }}
-                  title={a.name}
                 >
-                  {formatKm(a.distanceKm)}k
+                  <span className="pill-label">{formatKm(a.distanceKm)}k</span>
+                  {/* The pill itself only ever shows the distance (fixed width, one line, so a whole
+                      week of days stays a predictable height) — the Strava activity's own name, which
+                      used to be the native `title` tooltip, is the one piece of info that's otherwise
+                      lost. */}
+                  <span className="hovertip">
+                    <span className="hovertip-text">{a.name}</span>
+                  </span>
                 </button>
               ))}
               {entry?.planned.map((r) => (
                 <button
                   key={`p${r.id ?? r.date}`}
                   type="button"
-                  className="pill planned"
+                  className="pill planned hovertip-host"
                   style={{ background: RUN_TYPES[r.type].color, color: RUN_TYPES[r.type].textColor }}
                   onClick={(e) => {
                     e.stopPropagation();
                     onSelectRun(r);
                   }}
-                  title={buildTitle(r.type, r.steps)}
                 >
-                  {formatKm(totalDistanceKm(r.steps))}k
+                  <span className="pill-label">{formatKm(totalDistanceKm(r.steps))}k</span>
+                  {/* Type + total distance as a pair of rows (consistent with every other hovertip in
+                      the app), plus the step-by-step breakdown (warmup/main/cooldown, same convention
+                      as the run form's own instructions text) when there's more to it than one flat
+                      distance — the one thing the pill's bare "Xk" can't show. */}
+                  <span className="hovertip">
+                    <span className="hovertip-row">
+                      <span className="hovertip-key">Type</span>
+                      <span className="hovertip-value">{RUN_TYPES[r.type].label}</span>
+                    </span>
+                    <span className="hovertip-row">
+                      <span className="hovertip-key">Distance</span>
+                      <span className="hovertip-value">{formatKm(totalDistanceKm(r.steps))} km</span>
+                    </span>
+                    {r.steps.length > 1 && (
+                      <span className="hovertip-text hovertip-steps">{buildDescription(r.steps)}</span>
+                    )}
+                  </span>
                 </button>
               ))}
             </div>

@@ -95,11 +95,7 @@ export default function MileageChart({ weeks, endWeekStart, count, onCountChange
           {period.map((w) => {
             const isCurrent = w.weekStart === weekKey(new Date(), firstDay);
             return (
-              <div
-                key={w.weekStart}
-                className="chart-bar-col"
-                title={`${w.weekStart}: ${formatKm(w.totalKm)} km, ${w.runs} run${w.runs === 1 ? '' : 's'}${w.isPlanned ? ' (incl. planned)' : ''}`}
-              >
+              <div key={w.weekStart} className="chart-bar-col hovertip-host">
                 <div className={`chart-bar ${isCurrent ? 'current' : ''}`} style={{ height: `${(w.totalKm / max) * 100}%` }}>
                   {RUN_TYPE_ORDER.filter((t) => w.byType[t]).map((t) => (
                     <span
@@ -112,6 +108,16 @@ export default function MileageChart({ weeks, endWeekStart, count, onCountChange
                     <span className="chart-seg" style={{ height: `${(w.actualKm / (w.totalKm || 1)) * 100}%`, background: ACTUAL_COLOR }} />
                   )}
                 </div>
+                <span className="hovertip">
+                  <span className="hovertip-row">
+                    <span className="hovertip-key">{w.weekStart}</span>
+                    <span className="hovertip-value">{formatKm(w.totalKm)} km</span>
+                  </span>
+                  <span className="hovertip-key">
+                    {w.runs} run{w.runs === 1 ? '' : 's'}
+                    {w.isPlanned ? ' (incl. planned)' : ''}
+                  </span>
+                </span>
               </div>
             );
           })}

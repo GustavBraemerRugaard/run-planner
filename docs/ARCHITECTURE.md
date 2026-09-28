@@ -41,10 +41,25 @@ deliberate simplifications, not oversights.
   - **Google Calendar API v3** — the source of truth for planned runs. Each planned run is one all-day
     calendar event on a dedicated "Løb" calendar, with the structured workout data (steps, run type)
     packed into `extendedProperties.private` so a plain calendar view still shows something sensible.
-  - **Strava API** — the source of completed-run data (distance, time, pace, HR, cadence, laps).
-    Strava's OAuth flow requires a confidential client secret, which can't live in a static site, so
-    token exchange/refresh is proxied through a small Cloudflare Worker (`worker/`); the browser never
-    holds the Strava client secret.
+  - **Strava API** — the source of completed-run data (distance, time, pace, HR, cadence, laps, and the
+    detailed per-sample time series — see "Streams" below). Strava's OAuth flow requires a confidential
+    client secret, which can't live in a static site, so token exchange/refresh is proxied through a
+    small Cloudflare Worker (`worker/`); the browser never holds the Strava client secret.
+- **Streams (`getActivityStreams` in `lib/strava.ts`)** — Strava's `/activities/{id}/streams` endpoint,
+  the device-resolution (~1Hz) time/distance/heartrate/velocity series a GPS watch actually recorded,
+  resampled here into fixed ~10s buckets (`STREAM_BUCKET_SEC`) by averaging every raw sample in each
+  window. This is the data source for the default pace/HR detail view (`StreamChart.tsx`). The ~10s
+  bucket width, and the further 30s trailing rolling average `StreamChart` applies on top of it
+  (`lib/streamMath.ts`), were picked by building a live side-by-side comparison (today's lap-average
+  view vs. several raw/smoothed stream resolutions) and asking which read best, not guessed upfront.
+  Missing `heartrate` (e.g. no HR strap that run) leaves that field `null` per-point rather than failing
+  the whole fetch. `latlng` is never requested — there's no map or route visualization in the app (see
+  below), so fetching position data would be pure overhead.
+- No basemap, mapping library, or route visualization of any kind — an activity's detail view is pace/HR
+  data only. A Leaflet + OpenStreetMap-tiles route map was tried and dropped as "too detailed"; a
+  follow-up custom SVG route line colored by a pace/HR gradient (no basemap) was tried next and also
+  dropped, unrelated to the detail level — the route just isn't part of what this view is for. No
+  dependency beyond React as a result.
 - Google sign-in uses Google Identity Services' implicit token flow; the access token is kept only in
   memory (not localStorage), so a page reload requires signing in again — a deliberate trade-off to
   keep the token out of reach of any injected script.
@@ -65,7 +80,11 @@ src/
   lib/
     auth.ts                — Google sign-in (token lives in memory only)
     calendar.ts             — thin Google Calendar API v3 client
-    strava.ts               — Strava OAuth (via the Cloudflare Worker), activities, laps, personal bests
+    strava.ts               — Strava OAuth (via the Cloudflare Worker), activities, laps, personal
+                              bests, detailed streams (`getActivityStreams` — see "Streams" above)
+    streamMath.ts             — `trailingRollingAverage`, StreamChart's 30s-window smoothing pass
+    chartMath.ts              — axis/tick helpers (`floorToStep`, `ceilToStep`, `evenTicks`,
+                              `niceKmStep`) shared by LapChart and StreamChart
     goals.ts                — per-week goal, localStorage-only
     modalSize.ts             — sessionStorage-based "standard modal height" shared between popups
   components/
@@ -83,7 +102,9 @@ src/
                               a training-load preview for the run being edited)
     TrainingLoadGauge.tsx   — the ACWR zone/gauge/hint visual, shared by ActiveWeekCard and
                               RunContextPanel so "how risky is this load" never diverges between them
-    ActivityDetail.tsx      — view-a-completed-run modal (laps, pace/HR charts)
+    ActivityDetail.tsx      — view-a-completed-run modal (streams/laps pace+HR charts, no route/map)
+    StreamChart.tsx          — the default pace/HR view: a continuous line through every ~10s-bucketed,
+                              30s-rolling-averaged stream sample, with hover crosshair/tooltip
     StepEditor.tsx          — one warm-up/main/cool-down step row inside RunForm
     DateField.tsx           — dd/mm/yyyy masked date input + native picker button
     GoogleButton.tsx        — topbar connect/disconnect segment for Google
@@ -196,6 +217,190 @@ widget when an existing token already means the same thing.
   mount plus on a plain `window resize` listener and the `matchMedia` breakpoint's `change` event only —
   deliberately blind to its own content's size changes, so the measured/locked height only ever changes
   for a reason unrelated to what you're currently typing into the form.
+- **Hover interaction — every clickable element reacts** (an explicit, standing requirement): hovering
+  any clickable thing in the app gives a subtle visual reaction, so the cursor's target is always
+  obvious before you click. Three treatments, picked by the element's shape, not a single one-size-fits
+  all rule (validated as a live comparison demo — scale-only, border/ring-only, and combined — before
+  implementation; "combined" was chosen):
+  - **Standalone bordered elements** (`.btn` and its variants, `.date-field-pick`, cards like
+    `.latest-run`, row-cards like `.list-entry`/`.week-history-row`): `transform: scale(1.03–1.045)`
+    (smaller — `1.02–1.03` — for large cards or tightly-stacked rows with only a few px of gap, so the
+    scale doesn't visibly overlap a neighbor) plus `border-color: var(--accent)` and
+    `box-shadow: 0 0 0 1px var(--accent)`. `.btn.primary` has no visible border of its own (filled with
+    `--accent`, `border-color: transparent`), so its ring uses `--accent-text` instead, for contrast
+    against its own fill rather than changing a border nobody can see.
+  - **Borderless colored elements**: `.chip` (already carries its own `RunType` color as a border) adds
+    scale plus a background tint of `--accent` (not its own type color, which stays as the identity
+    signal) — the already-`.active` chip gets a `filter: brightness(1.08)` instead, since a competing
+    tint would fight the fill. `.pill` (no border at all) adds scale plus a `box-shadow` ring instead of
+    a `border-color` change. `.step-remove` (small icon-only button) adds scale plus a tint of its own
+    existing hover color (`--danger`, already established before this pattern existed) rather than the
+    app accent, since red is already this control's own hover signal.
+  - **Flush / shared-border groups, where a scale would clip into a neighbor and break the seamless
+    edge** — every segmented-toggle instance (`.seg-toggle`, `.view-toggle`, `.avg-stats-toggle`,
+    `.week-history-toggle`, `.weeks-stepper`, `.mobile-tabbar`, `.topbar-action-group`) plus the flush
+    calendar grid (`.rolling-day`, which shares a `border-right` with its neighbor): an **inset** ring
+    (`box-shadow: inset 0 0 0 1px var(--accent)`) plus a background tint
+    (`color-mix(in srgb, var(--accent) 16%, <the element's own base background>)`) for an inactive
+    segment; the already-filled `.active` segment gets `filter: brightness(1.12)` plus an inset ring in
+    `--accent-text` instead of a competing tint. No `transform` anywhere in this group.
+  - **Borderless full-width rows with no natural gutter to scale into** (`.today-line`,
+    `.list-day-head`, `.list-entry-empty`): background tint only (`color-mix(in srgb, var(--accent) 8%,
+    transparent)`), no scale, no ring — scaling a row that spans its container edge-to-edge has nowhere
+    to grow into without visually clipping.
+  - `.form-context-cell` (the run-form timeline strip cells) and `.week-history-row` (the history-list
+    rows) are deliberately **excluded** — both are plain, non-interactive display rows with no
+    `onClick` (`.form-context-cell` only has a hover tooltip; `.week-history-row` has nothing at all —
+    only the `.week-history-toggle` buttons above it are actually clickable), so neither counts as a
+    clickable element for this rule.
+  - **A hover effect needs clearance to render into, or its ancestor's scroll clipping cuts it off**:
+    `.side-top` (which holds `.latest-run`, the only hoverable card in that column) has `overflow-y:
+    auto` at the ≥900px breakpoint, and setting `overflow-y` to anything but `visible` forces the
+    browser to also clip the x-axis (a lone `overflow-y: auto` + `overflow-x: visible` pairing isn't a
+    valid computed combination — the `visible` axis gets coerced to `auto` too), not just scroll the
+    y-axis. `.latest-run` is `.side-top`'s first child, flush against every one of its edges with zero
+    natural gap, so its hover ring/scale was clipped on the top and both sides — only the bottom
+    rendered fully, where the 16px gap to the next card already gave it room. Fixed with two different
+    techniques depending on the axis, both on `.side-top`:
+    - **Top**: plain `padding-top: 4px`. A few px of extra space above the first card, absorbed from
+      the fixed JS-measured height (`box-sizing: border-box`, set globally), with nothing above it to
+      misalign with.
+    - **Left/right**: plain padding was tried first and rejected — it shifts every card 6px inward from
+      the 300px column's own edges, breaking the flush alignment those edges must keep with the topbar
+      and the mileage chart card below (see the "Equal-gap-spread" pattern above and
+      `docs/LAYOUT_DESKTOP.md`). The actual fix pairs a negative margin with equal padding, horizontal
+      only: `margin: 0 -6px; padding: ... 6px` (see the full rule for the exact values). Flexbox
+      `stretch` (the default cross-axis alignment `.side-top` inherits from `.side`, a column so the
+      cross-axis is horizontal) sizes a stretched item's own visible box to fully cover the space next
+      to a negative margin — so the box becomes 6px wider on each side, bleeding harmlessly into the
+      column's outer gaps, while the padding pushes the cards back in by that same 6px. Net effect at
+      rest: zero shift (verified: the card's bounding box x/width are pixel-identical before and after
+      this rule was added). Net effect on hover: 6px of clearance on each side.
+    - **Why the same trick doesn't also cover the vertical axis** (i.e. why top/bottom aren't also
+      `margin: -6px` / `padding: 6px`, folded into one rule): `.side-top`'s height is the flex *main*
+      axis, and it's set directly via inline style (`calHeight`, JS-measured — see App.tsx), not
+      stretch-computed. The stretch-absorbs-negative-margin mechanic above is specifically a *cross-axis*
+      behavior; applying it to the main axis instead would just shift the whole box up past the column's
+      intended top edge (no stretch recalculation to cancel it out), not render harmlessly into a gap.
+      That's why vertical clearance is a plain, unmatched `padding-top` rather than reusing this trick.
+    Any future hoverable element added flush against a scrolling container's edge needs the same kind of
+    clearance — check for this before assuming a missing hover effect is a CSS specificity bug, and
+    remember top/bottom and left/right need *different* techniques for the reason above.
+  - Transition timing is `120ms ease` on every affected property (`transform`, `border-color`,
+    `box-shadow`, `background`, `filter`), added directly on each element's own base rule (not a
+    universal `* { transition }`, so unrelated properties never pick up an accidental transition).
+    `@media (prefers-reduced-motion: reduce)` disables the transition and forces `transform: none` on
+    every scale-based selector at the bottom of `styles.css` — the highlight itself still shows (it's
+    the "this is clickable" signal, not decoration), just without the animated motion.
+  - Disabled elements never react on hover — every rule here is scoped with `:not(:disabled)` (or
+    simply relies on `.today-line`'s existing `cursor: default` styling) so a disabled `.btn`,
+    `.today-line`, `.weeks-stepper` button, or `.topbar-action-group` button stays visually inert.
+  - **`.list-view` needed the same scroll-clearance fix as `.side-top`** (see above): it's also
+    `overflow-y: auto` (hence `overflow-x` coerced to `auto` too) with its rows flush against its left/
+    right edges, so a row's hover ring was clipped on both sides. Same technique, horizontal only:
+    `padding: 0 10px; margin: 0 -10px;` on `.list-view` itself — net zero shift at rest, 10px of
+    clearance on hover.
+  - **`.cal-toolbar-actions .btn.small` (the "Today" button) needed a scoped size override** to match
+    the height/font-size of the adjacent `Month`/`List` segmented toggle: `font-size: 0.85rem; padding:
+    6px 14px;`. Scoped to `.cal-toolbar-actions` rather than changed on `.btn.small` globally, since that
+    class is reused elsewhere (`RunForm`'s step buttons, `TodayCard`) at its original size.
+- **Hover *data-point* tooltips — a shared, purpose-built design instead of the native browser
+  tooltip** (an explicit, standing requirement — distinct from the clickable-hover highlighting above,
+  which signals "this reacts to a click"; this is for hovering a non-clickable data point, like a bar
+  segment or a lap, to see the number(s) behind it): every such spot used a plain `title=` attribute
+  until this pattern was introduced, which meant browser-default styling (delay, plain background, no
+  relation to the app's own visual language) at five different sites (`ActiveWeekCard`'s week-mix bar
+  segments, `MileageChart`'s bars, `TrainingLoadGauge`'s ACWR explanation, `RunContextPanel`'s day-strip
+  cells, `ActivityDetail`'s `LapChart` bars). Three design options (a small technical "chip", a bordered
+  card with an accent-colored left edge, and a monospace "terminal readout") were mocked up and shown
+  side by side before implementation, per an explicit "show me options first" request; **Option B — the
+  bordered card — was chosen.**
+  - **Shared CSS, `styles.css`**: `.hovertip-host` (`position: relative`, put on the hoverable element)
+    wraps a `.hovertip` child — `position: absolute`, centered above the host (`bottom: calc(100% + 8px);
+    left: 50%; transform: translate(-50%, ...)`), styled as a small card: `background: var(--panel)`,
+    `border: 1px solid var(--border)` plus a 2px `border-left: var(--accent)` accent edge (the visual
+    signature that reads "Option B" at a glance), a drop-shadow, and a small downward caret
+    (`.hovertip::after`, a CSS triangle) pointing at the host. Content goes in `.hovertip-row` (a
+    space-between key/value line — `.hovertip-key` muted, `.hovertip-value` bold) for structured
+    key→number readouts, or a single `.hovertip-text` line for prose (used by `TrainingLoadGauge`'s ACWR
+    explanation, which isn't a key/value pair).
+  - **CSS-only vs. JS-driven**: four of the five sites are plain HTML, so a pure-CSS
+    `:hover`/`:focus-within` opacity+transform transition on `.hovertip-host > .hovertip` is enough —
+    no JS state, no event handlers. `ActivityDetail`'s `LapChart` is the exception: its bars are SVG
+    `<rect>` elements inside a scaled `viewBox`, where embedding real HTML markup positioned relative to
+    one specific bar isn't practical (an absolutely-positioned HTML tooltip doesn't scale/reposition
+    with the SVG's own viewBox transform the way an SVG-native element would). So `LapChart` tracks
+    `hoverIdx` in React state (`onMouseEnter`/`onMouseLeave` on each `<rect>`) and renders a single
+    `.hovertip` positioned by percentage (`left: ${...}%`, computed from the hovered bar's x-position
+    against the chart's fixed width) just after the closing `</svg>` tag, with an explicit `.js-shown`
+    class standing in for `:hover` — this mirrors `StreamChart`'s pre-existing hover-crosshair/tooltip,
+    which has the same SVG-positioning constraint.
+  - **`.bar` (the week-mix bar in `ActiveWeekCard`/`RunContextPanel`) had `overflow: hidden`** to round
+    its outer corners around the flush `.bar-seg` segments inside it — which would have clipped the new
+    per-segment `.hovertip`s exactly like the `.side-top`/`.list-view` scroll-clipping cases above.
+    Fixed by removing `overflow: hidden` from `.bar` and moving the corner-rounding onto the segments
+    themselves instead (`.bar-seg:first-child`/`:last-child` get the matching `border-radius` corners),
+    so the row still reads as one pill-shaped bar at rest with nothing clipping a hover tooltip that
+    pokes above it.
+  - **`.form-context-cell` (the run-form's 7-column day-strip, `RunContextPanel`) needed 3-zone
+    anchoring instead of the default centered tooltip**: the strip is only ~320px wide across 7 cells
+    (~40px each), and `.form-context` is itself `overflow-y: auto` (hence x-clipped too, same coercion
+    as above) — a centered tooltip on the leftmost or rightmost cells would overflow past the panel's own
+    edge and get clipped. Rather than adding clearance padding to the whole panel for this one edge case
+    (rejected as visually excessive), the left 3 cells (`:nth-child(-n+3)`) anchor the tooltip's *left*
+    edge to the cell's left edge, the right 3 (`:nth-child(n+5)`) anchor *right*, and the middle (4th)
+    cell keeps the default centered anchor. Edge-anchored tooltips drop the caret (`::after { display:
+    none; }`) since a centered-pointing triangle would misleadingly point away from the tooltip's actual
+    anchor once it's no longer centered over the cell. This doesn't guarantee pixel-perfect containment
+    for arbitrarily long tooltip content, but the common case (the short `RUN_TYPES` labels actually
+    shown) fits comfortably within the panel.
+  - **A sixth site was added: `RollingCalendar`'s month-view day pills** (`.pill.actual` for a Strava
+    activity, `.pill.planned` for a planned run) — these used to carry a native `title` (the activity
+    name, or `buildTitle`'s short "Xk Type" string) same as everywhere else before this pattern. Now
+    shows the activity name as `.hovertip-text` for an actual run, and for a planned run, `.hovertip-row`
+    pairs for its type and total distance plus (when there's more to it than one flat distance) the
+    step-by-step breakdown from `buildDescription` — the same warmup/main/cooldown text the run form's
+    own instructions field uses — in a `.hovertip-text.hovertip-steps` block. `.hovertip-steps` sets
+    `white-space: pre-line` (instead of `.hovertip-text`'s default `normal`) so `buildDescription`'s own
+    line breaks survive instead of collapsing into one run-on line. `.pill` used to carry
+    `overflow: hidden` itself (to ellipsis-truncate its own short label defensively) — moved onto a new
+    inner `.pill-label` span instead, since a `.hovertip` needs to render *outside* its host's box and
+    `overflow: hidden` on the host would have clipped it away entirely (the same class of bug fixed for
+    `.bar` above). `.rolling-week` (the 7-column day grid) reuses `.form-context-cell`'s three-zone
+    left/center/right anchoring, for the same reason — `.rolling-cal-body`'s `overflow-y: auto` clips the
+    x-axis, and a pill flush against the leftmost/rightmost day column (only `.rolling-day`'s 4px padding
+    as clearance) centered a tooltip that ran straight past the calendar's own edge.
+  - **Two overflow bugs found after the initial five-site rollout, both reported as a tooltip going
+    "outside the borders of the card and becoming partially not visible"** (`ActiveWeekCard`'s bar
+    segments and both `TrainingLoadGauge` instances — the sidebar one and the run-form one):
+    - `.hovertip` had `min-width: max-content` *alongside* `max-width: 220px`. An absolutely-positioned
+      auto-width box already shrinks to fit short content with no `min-width` needed (the browser's
+      default "shrink-to-fit" sizing) — `min-width: max-content` was redundant for that case and actively
+      harmful for a longer one: CSS sizing gives `min-width` priority over `max-width` when the two
+      conflict, and `max-content` sizes a wrapping text block as if it could never wrap (its widest
+      possible unwrapped line). So `TrainingLoadGauge`'s explanatory paragraph — the longest content any
+      `.hovertip` carries — was forced onto one un-wrapped line however wide that made the box, blowing
+      straight through `max-width` and the card's edge regardless of how well-centered the tooltip's
+      anchor was. Fixed by dropping `min-width: max-content` entirely (short content still hugs its own
+      width via the default shrink-to-fit behavior) and reducing `max-width` to `200px` for extra buffer
+      against the sidebar/side-panel cards' ~276–290px content width. `.hovertip-row` also had
+      `white-space: nowrap`, which — once `min-width: max-content` could no longer force the *box* wide
+      enough to fit it — would have let a long row (e.g. "Long Run (planned)" beside its km value) paint
+      past `.hovertip`'s own edge instead of respecting `max-width`; removed, so a flex row shrinks and
+      wraps onto a second line instead the same way `.hovertip-text` already did.
+    - `.bar-seg`'s tooltip centered on the *segment*, but a segment's width is proportional to its share
+      of the week's km — often a thin sliver near one end of the bar — so centering a ~200px tooltip on
+      a narrow, off-center anchor overflowed the card on whichever side it was closer to, independent of
+      the width fix above. Rather than adding `.form-context-cell`-style left/right zones (awkward here
+      since the segment count and each one's position are both data-driven, not a fixed 7 columns),
+      `.bar` itself was made the positioned ancestor instead of `.bar-seg` (`.bar { position: relative; }`
+      / `.bar > .bar-seg.hovertip-host { position: static; }`, overriding the shared `.hovertip-host`
+      rule for this one case) — `.bar-seg` keeps the `hovertip-host` class purely so its own `:hover`/
+      `:focus-within` still triggers the right segment's tooltip, but the tooltip's `left: 50%` now
+      resolves against `.bar`'s full card-width box instead of the segment's, so every segment's tooltip
+      centers on the same safe point regardless of which one triggered it (trading per-segment horizontal
+      precision — which the tooltip's own content, naming the segment, already makes unambiguous — for
+      guaranteed containment).
 - **No scrollbar handles, anywhere, ever** — an explicit, standing requirement, not just a style
   preference for a few specific panels. In `styles.css` this is one universal rule (`* { scrollbar-width:
   none; -ms-overflow-style: none; } *::-webkit-scrollbar { display: none; }`), deliberately applied to

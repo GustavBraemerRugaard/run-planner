@@ -52,17 +52,33 @@ export default function ActiveWeekCard({ week, dayEntries, asOfDate }: Props) {
         </span>
         <strong>{formatKm(week.totalKm)} km</strong>
       </div>
-      <div className="bar" title={`${week.runs} run${week.runs === 1 ? '' : 's'}`}>
+      {/* The whole-bar "N runs" tooltip this used to also carry was dropped — that count is already
+          shown as plain text just below (`.summary-sub`), so it was pure redundancy once every segment
+          got its own hover-readout (see the `.hovertip` pattern note in styles.css). */}
+      <div className="bar">
         {week.actualKm > 0 && (
-          <span className="bar-seg" style={{ width: `${(week.actualKm / max) * 100}%`, background: ACTUAL_COLOR }} title={`Run: ${formatKm(week.actualKm)} km`} />
+          <span className="bar-seg hovertip-host" style={{ width: `${(week.actualKm / max) * 100}%`, background: ACTUAL_COLOR }}>
+            <span className="hovertip">
+              <span className="hovertip-row">
+                <span className="hovertip-key">Run</span>
+                <span className="hovertip-value">{formatKm(week.actualKm)} km</span>
+              </span>
+            </span>
+          </span>
         )}
         {RUN_TYPE_ORDER.filter((t) => week.byType[t]).map((t) => (
           <span
             key={t}
-            className="bar-seg"
+            className="bar-seg hovertip-host"
             style={{ width: `${((week.byType[t] ?? 0) / max) * 100}%`, background: RUN_TYPES[t].color }}
-            title={`${RUN_TYPES[t].label} (planned): ${formatKm(week.byType[t] ?? 0)} km`}
-          />
+          >
+            <span className="hovertip">
+              <span className="hovertip-row">
+                <span className="hovertip-key">{RUN_TYPES[t].label} (planned)</span>
+                <span className="hovertip-value">{formatKm(week.byType[t] ?? 0)} km</span>
+              </span>
+            </span>
+          </span>
         ))}
       </div>
       <div className="summary-sub">

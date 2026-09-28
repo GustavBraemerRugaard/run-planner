@@ -39,26 +39,37 @@ function primaryEntry(entries: WeekEntry[]): { km: number; color: string; textCo
     : { km, color: RUN_TYPES[rep.runType!].color, textColor: RUN_TYPES[rep.runType!].textColor };
 }
 
-/** Full detail for every entry that day, for the cell's hover tooltip — the compact pill only has room
- * for one number, so this is where a day with more than one entry (e.g. an actual run plus the run
- * currently being edited on the same date) becomes readable. */
-function tooltipFor(entries: WeekEntry[]): string | undefined {
-  if (entries.length === 0) return undefined;
-  return entries.map((e) => `${e.label}${e.isDraft ? ' (editing)' : ''} — ${formatKm(e.km)}k`).join('\n');
-}
-
 /** One day in the compact 7-wide week strip: a date number, plus — if anything happened that day — a
  * small colored pill with its km (actual-run orange, or the planned run's type color). A day with
  * nothing planned or done renders as a bare, muted date number ("rest day" readable at a glance without
- * needing a separate label or row). */
+ * needing a separate label or row); it still gets a `.hovertip-host` wrapper (harmless — with no
+ * `.hovertip` child inside, `:hover` has nothing to reveal) rather than branching the markup, since a
+ * rest day never has entries to show anyway.
+ *
+ * The hover tooltip (one row per entry, since a day can have more than one — an actual run plus the run
+ * currently being edited on the same date, say — and the compact pill only has room for one number) is
+ * the full detail the pill alone can't show. */
 function StripCell({ date, entries, isDraftDate }: { date: string; entries: WeekEntry[]; isDraftDate: boolean }) {
   const primary = primaryEntry(entries);
   return (
-    <div className={`form-context-cell ${isDraftDate ? 'draft' : ''}`} title={tooltipFor(entries)}>
+    <div className={`form-context-cell hovertip-host ${isDraftDate ? 'draft' : ''}`}>
       <span className="form-context-cell-date">{parseLocalDate(date).getDate()}</span>
       {primary && (
         <span className="form-context-cell-pill" style={{ background: primary.color, color: primary.textColor }}>
           {formatKm(primary.km)}k
+        </span>
+      )}
+      {entries.length > 0 && (
+        <span className="hovertip">
+          {entries.map((e, i) => (
+            <span className="hovertip-row" key={i}>
+              <span className="hovertip-key">
+                {e.label}
+                {e.isDraft ? ' (editing)' : ''}
+              </span>
+              <span className="hovertip-value">{formatKm(e.km)}k</span>
+            </span>
+          ))}
         </span>
       )}
     </div>
@@ -155,7 +166,7 @@ export default function RunContextPanel({ context, draftLoad, matchHeight }: Pro
 
       <TrainingLoadGauge
         load={draftLoad}
-        title="Acute:chronic workload ratio if this run is saved as currently edited — a directional injury-risk signal, not a diagnosis."
+        tooltip="Acute:chronic workload ratio if this run is saved as currently edited — a directional injury-risk signal, not a diagnosis."
       />
     </div>
   );

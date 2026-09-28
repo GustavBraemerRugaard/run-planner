@@ -75,10 +75,25 @@ body {
   flex: 1; font: inherit; font-size: 0.95rem; font-weight: 700; padding: 9px 4px; border: none;
   border-left: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
+  transition: background 120ms ease, box-shadow 120ms ease, filter 120ms ease;
 }
 .topbar-action-group > button:first-child { border-left: none; }
 .topbar-action-group > button.primary { background: var(--accent); color: var(--accent-text); }
 .topbar-action-group > button:disabled { opacity: 0.55; cursor: default; }
+/* Hover reaction for the app's universal "clickable things react" rule (see docs/ARCHITECTURE.md's
+   "Hover interaction" pattern note). This is a flush, shared-border segmented group, so a scaling
+   hover (used for standalone buttons/cards) would clip against its neighbors and break the seamless
+   edge — instead each segment gets an inset ring plus a background tint (or a brightness lift for the
+   already-filled `.primary` segment), the same adapted treatment used by every other segmented-toggle
+   group in the app. */
+.topbar-action-group > button:not(:disabled):not(.primary):hover {
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.topbar-action-group > button.primary:not(:disabled):hover {
+  filter: brightness(1.12);
+  box-shadow: inset 0 0 0 1px var(--accent-text);
+}
 /* The refresh glyph renders visually smaller than the G/S/+ characters at the same font-size, so it
    gets its own bump to look the same weight/size as its neighbors. */
 .icon-refresh { display: inline-block; font-size: 1.3em; line-height: 1; }
@@ -91,11 +106,25 @@ body {
 .btn {
   font: inherit; font-size: 0.95rem; padding: 9px 14px; border-radius: 2px; cursor: pointer; white-space: nowrap;
   border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease, filter 120ms ease;
 }
 .btn:disabled { opacity: 0.55; cursor: default; }
 .btn.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; font-weight: 600; }
 .btn.danger { color: var(--danger); }
 .btn.big { padding: 14px 22px; font-size: var(--fs-value-lg); }
+/* Standalone bordered button: the "regular" hover treatment (see docs/ARCHITECTURE.md's "Hover
+   interaction" pattern note) — a slight scale plus a border/ring highlight. `.primary` has no visible
+   border of its own (transparent, filled with `--accent` instead), so it swaps the ring color to
+   `--accent-text` for contrast against its own fill rather than changing a border nobody can see. */
+.btn:not(:disabled):hover {
+  transform: scale(1.045);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.btn.primary:not(:disabled):hover {
+  border-color: var(--accent-text);
+  box-shadow: 0 0 0 1px var(--accent-text);
+}
 
 .notice { padding: 10px 14px; border-radius: var(--radius); background: color-mix(in srgb, var(--accent) 14%, var(--panel)); margin-bottom: 12px; font-size: 0.92rem; }
 .notice.error { background: color-mix(in srgb, var(--danger) 16%, var(--panel)); }
@@ -108,7 +137,36 @@ code { background: var(--border); padding: 1px 5px; border-radius: 2px; }
 
 main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .side { display: grid; gap: 16px; }
-.side-top { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
+/* Gives .latest-run's hover scale/ring (see its rule below) room to render on every side, without
+   moving its resting-state position — needed because `.side-top` gets `overflow-y: auto` at the
+   ≥1000px breakpoint below, and setting `overflow-y` to anything but `visible` forces the browser to
+   also clip the x-axis (a lone `overflow-y: auto` + `overflow-x: visible` pairing isn't a valid computed
+   combination — the visible axis gets coerced to `auto` too), not just scroll the y-axis. `.latest-run`
+   is `.side-top`'s first child, flush against every one of its edges with zero natural gap, so its hover
+   ring/scale was clipped on the top and both sides (only the bottom rendered fully, where the 16px gap
+   to the next card already gave it room).
+   Top: plain `padding-top`. A few px of extra space above the first card, absorbed from the fixed
+   JS-measured height (`box-sizing: border-box`, set globally), with nothing above it to misalign with.
+   Left/right: **not** plain padding — that would shift every card in by 6px from the 300px column's
+   own edges, breaking the flush alignment those edges must keep with the topbar and the mileage chart
+   card below (see the "Equal-gap-spread" pattern above and docs/LAYOUT_DESKTOP.md). Instead, paired
+   negative margin + equal padding, *horizontal only*: flexbox `stretch` (the default cross-axis
+   alignment inherited from `.side`, a column so the cross-axis is horizontal) sizes a stretched item's
+   own visible box to fully cover the space next to a negative margin, so the box becomes 6px wider on
+   each side (bleeding harmlessly into the column's outer gaps) while the padding pushes the cards back
+   in by that same 6px — net zero shift at rest, 6px of clearance when hovering. This trick only works
+   on the cross axis: `.side-top`'s height is the flex *main* axis and is set directly via inline style
+   (JS-measured, not stretch-computed), so a negative top/bottom margin would NOT be absorbed the same
+   way — it would just shift the box up past the column's intended top edge. That's why vertical
+   clearance stays plain `padding-top` instead of reusing this trick. Only `.latest-run` reacts to hover
+   in this column (`.active-week`/`.avg-stats` aren't themselves clickable — only the buttons inside
+   `.avg-stats` are, and those use the no-scale toggle treatment, which needs no clearance), but the
+   clearance applies on every side rather than only where `.latest-run` sits, since any future hoverable
+   child added here would hit the same clipping otherwise. */
+.side-top {
+  display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0;
+  padding: 4px 6px 0; margin: 0 -6px;
+}
 .cal-col { display: grid; gap: 16px; min-width: 0; }
 @media (min-width: 1000px) {
   /* On desktop the side rail should end flush with the calendar/weekly-history column below it:
@@ -142,9 +200,13 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .today-line {
   display: flex; align-items: center; gap: var(--sp-2); width: 100%; text-align: left;
   font: inherit; font-size: var(--fs-value); border: none; background: transparent; color: var(--text);
-  padding: 0; cursor: pointer;
+  padding: 0; cursor: pointer; border-radius: 2px;
+  transition: background 120ms ease;
 }
 .today-line:disabled { cursor: default; }
+/* Borderless full-width row: no border to highlight and no natural gutter to scale into, so the hover
+   reaction is a background tint alone (see docs/ARCHITECTURE.md's "Hover interaction" pattern note). */
+.today-line:not(:disabled):hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .today-dot { width: 10px; height: 10px; border-radius: 2px; flex: none; }
 .today-sub { color: var(--muted); font-size: var(--fs-caption); font-weight: 400; }
 .today-week { padding-left: 18px; }
@@ -167,8 +229,14 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
   .mobile-tabbar button {
     flex: 1; font: inherit; font-size: 0.85rem; padding: 8px; border-radius: 2px; border: none;
     background: transparent; color: var(--muted); cursor: pointer;
+    transition: background 120ms ease, box-shadow 120ms ease, filter 120ms ease;
   }
   .mobile-tabbar button.active { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+  .mobile-tabbar button:not(.active):hover {
+    background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+  .mobile-tabbar button.active:hover { filter: brightness(1.12); box-shadow: inset 0 0 0 1px var(--accent-text); }
 
   /* Only one section shows at a time, chosen by the tab bar; leave room at the bottom for it. */
   .app { padding-bottom: 64px; }
@@ -192,16 +260,110 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .avg-stats-toggle button {
   font: inherit; font-size: 0.75rem; padding: 3px 9px; border: none; background: var(--panel);
   color: var(--text); cursor: pointer;
+  transition: background 120ms ease, box-shadow 120ms ease, filter 120ms ease;
 }
 .avg-stats-toggle button.active { background: var(--accent); color: var(--accent-text); }
+.avg-stats-toggle button:not(.active):hover {
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.avg-stats-toggle button.active:hover { filter: brightness(1.12); box-shadow: inset 0 0 0 1px var(--accent-text); }
 .avg-stats-rows { display: grid; gap: 6px; margin-top: 8px; }
 .avg-stats-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.85rem; }
 .avg-stats-row span { color: var(--muted); }
 
 .active-week-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.9rem; margin-top: 4px; }
 .summary-sub { color: var(--muted); font-size: 0.8rem; margin-top: 3px; }
-.bar { display: flex; height: 10px; border-radius: 2px; background: var(--border); overflow: hidden; margin-top: 5px; }
+/* No `overflow: hidden` here (unlike most flex bars) — the whole point of `.bar-seg` hosting a
+   `.hovertip` (see below) is for it to render outside this 10px-tall bar, and a clipping ancestor
+   would cut it off exactly like `.side-top`/`.list-view` did before their own clearance fixes (see
+   docs/ARCHITECTURE.md's "Hover interaction" pattern note). Corner-rounding that `overflow: hidden`
+   used to provide (so the leftmost/rightmost segment's square corners didn't poke out past the
+   container's own rounded ones) is replaced by rounding those two segments directly instead. */
+.bar { display: flex; height: 10px; border-radius: 2px; background: var(--border); margin-top: 5px; }
 .bar span { display: block; height: 100%; }
+.bar-seg:first-child { border-top-left-radius: 2px; border-bottom-left-radius: 2px; }
+.bar-seg:last-child { border-top-right-radius: 2px; border-bottom-right-radius: 2px; }
+/* `.bar-seg` tooltips anchor to the whole `.bar`, not to the individual segment: a segment's own width
+   is data-driven (proportional to its km share) and can be a sliver near either end of the bar, and a
+   tooltip centered on a sliver near an edge overflowed past the card's own border (reported as the
+   tooltip becoming "partially not visible" — `.active-week` sits inside `.side-top`, which clips its
+   x-axis the same way documented at `.side-top`'s own rule above, and even without that clipping, a
+   tooltip hanging off the card's edge looks broken). `.bar` — not `.bar-seg` — is the positioned
+   ancestor `.hovertip`'s `left: 50%` resolves against (`.bar-seg` keeps the shared `.hovertip-host`
+   class so its own `:hover`/`:focus-within` still triggers the right segment's tooltip, but its
+   `position` is overridden back to `static` here so it doesn't create its own positioning context);
+   `.bar` spans the card's full content width like every other hovertip host in this app, so every
+   segment's tooltip now centers on the same safe, card-width-safe point regardless of which segment
+   triggered it. */
+.bar { position: relative; }
+.bar > .bar-seg.hovertip-host { position: static; }
+
+/* ---- Hover tooltip (bordered card, accent-left edge) ------------------------------------------
+   Shared by every non-clickable hover-readout in the app (`.bar-seg` below, `.chart-bar-col` in the
+   mileage chart, `.training-load`'s gauge, `.form-context-cell` in the run-form timeline strip, and
+   the lap-chart bars in ActivityDetail.tsx) — replaces each spot's previous native `title` attribute
+   tooltip (unstyled, inconsistent with the rest of the app, and the browser's own to theme) with one
+   consistent design chosen from three options shown to and picked by the person this app is for: a
+   small card matching the app's OWN card visual language (`--panel` fill, 1px `--border`, `--radius`)
+   rather than an inverted "chip" or a bracket-punctuated "terminal" look, with a 2px `--accent`-colored
+   left edge tying it back to whichever metric/series it's attached to.
+   Pure CSS (opacity/transform transition on `:hover`/`:focus-within`), no JS, for every spot except the
+   SVG lap-chart bars — the anchor element just needs `position: relative` and a `.hovertip` child;
+   nothing needs its own show/hide state. The lap chart needs a JS-driven variant instead because its
+   bars are `<rect>`s inside a scaled SVG `viewBox` (`preserveAspectRatio="none"`), where embedding real
+   HTML markup at a *fixed*, un-stretched font size isn't practical (`<foreignObject>` would inherit the
+   viewBox's own non-uniform stretch) — see ActivityDetail.tsx's `LapChart`, which mirrors the
+   hover-tracking approach `StreamChart` already uses for its own crosshair/tooltip, rendering a
+   `.hovertip` as a plain HTML sibling of the `<svg>` instead of inside it. */
+.hovertip-host { position: relative; }
+/* `max-width` alone (no `min-width`) — an absolutely-positioned auto-width box already shrinks to fit
+   short content on its own (the browser's default "shrink-to-fit" sizing), so nothing needs to force
+   that. An earlier `min-width: max-content` was added on top of that and actively caused the overflow
+   reported in the sidebar cards: `min-width` wins over `max-width` when the two conflict (CSS sizing
+   precedence), and `max-content` computes a text block's width as if it were never allowed to wrap —
+   so a long one-liner like the training-load gauge's explanation was forced onto a single un-wrapped
+   line however wide that made the box, blowing straight through `max-width` and the card's own border.
+   `max-width: 200px` (down from 220px) leaves a bit more buffer against the sidebar/side-panel cards'
+   ~276–290px content width so a centered tooltip clears the card's edges with room to spare, at the
+   cost of `.hovertip-text` (and, rarely, a long day-strip entry list) wrapping into more lines instead
+   of staying wide — exactly the "more rows, capped width" trade-off the card width requires. */
+.hovertip {
+  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translate(-50%, 2px);
+  display: flex; flex-direction: column; gap: 3px; max-width: 200px;
+  padding: 5px 9px; border-radius: 2px; background: var(--panel); border: 1px solid var(--border);
+  border-left: 2px solid var(--accent); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  font-size: var(--fs-caption); pointer-events: none; opacity: 0; z-index: 30;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.hovertip::after {
+  content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 5px solid var(--panel);
+  filter: drop-shadow(0 1px 0 var(--border));
+}
+/* Default row shape: a muted key on the left, a bold value on the right, space-between so both edges
+   line up even when several rows (one per day-strip entry, say) stack with different-length keys. A
+   single-row tooltip (a bar segment, a lap bar) still uses this same one-row markup for consistency.
+   Not `white-space: nowrap` (dropped along with `.hovertip`'s own `min-width: max-content` above, for
+   the same reason): a flex row's items shrink below their content width by default, and `nowrap` text
+   inside a shrunk item just paints past the row's own edge instead of wrapping — exactly the kind of
+   overflow this tooltip needs to never do. A long key (e.g. "Long Run (planned)" next to its km value)
+   now wraps onto a second line within the row rather than spilling past `.hovertip`'s `max-width`;
+   short content (every other row in the app so far) stays on one line exactly as before, since nothing
+   forces a wrap that isn't needed. */
+.hovertip-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.hovertip-key { color: var(--muted); }
+.hovertip-value { font-weight: 700; color: var(--text); }
+/* Longer-form variant (the training-load gauge's explanatory text, not a key/value readout) — wraps
+   normally instead of every row forcing itself onto one line. */
+.hovertip-text { white-space: normal; color: var(--text); line-height: 1.4; }
+/* JS-driven variant (LapChart): shown via an inline `opacity: 1`/`display` toggle from React hover
+   state instead of a CSS `:hover` selector, since its anchor is a plot area the mouse moves freely
+   within (tracking the *nearest* bar), not a single fixed hoverable element. */
+.hovertip.js-shown { opacity: 1; transform: translate(-50%, 0); }
+.hovertip-host:hover > .hovertip:not(.js-shown), .hovertip-host:focus-within > .hovertip:not(.js-shown) {
+  opacity: 1; transform: translate(-50%, 0);
+}
 
 /* Weekly mileage chart */
 .chart-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
@@ -210,8 +372,13 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .weeks-stepper button {
   font: inherit; font-size: 12px; padding: 3px 8px; border: none; background: var(--panel);
   color: var(--text); cursor: pointer; line-height: 1.6;
+  transition: background 120ms ease, box-shadow 120ms ease;
 }
 .weeks-stepper button:disabled { opacity: 0.4; cursor: default; }
+.weeks-stepper button:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
 .weeks-value {
   padding: 3px 8px; font-size: 13px; color: var(--text); border-left: 1px solid var(--border);
   border-right: 1px solid var(--border); display: flex; align-items: center; font-variant-numeric: tabular-nums;
@@ -244,12 +411,24 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .cal-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .cal-title { margin: 0; font-size: var(--fs-label); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
 .cal-toolbar-actions { display: flex; align-items: center; gap: 8px; }
+/* The "Today" button sits directly beside `.view-toggle` (below), so the two need to read as the same
+   height/weight even though `.btn.small`'s own values (used elsewhere — RunForm's "+ step" button,
+   TodayCard's goal controls) are tuned for those other, standalone contexts and don't happen to match
+   `.view-toggle button`'s. Scoped to just this one instance (`.cal-toolbar-actions .btn.small`) rather
+   than changing `.btn.small` itself, which would shift every other button using it. */
+.cal-toolbar-actions .btn.small { font-size: 0.85rem; padding: 6px 14px; }
 .view-toggle { display: flex; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
 .view-toggle button {
   font: inherit; font-size: 0.85rem; padding: 6px 14px; border: none; background: var(--panel);
   color: var(--text); cursor: pointer;
+  transition: background 120ms ease, box-shadow 120ms ease, filter 120ms ease;
 }
 .view-toggle button.active { background: var(--accent); color: var(--accent-text); }
+.view-toggle button:not(.active):hover {
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.view-toggle button.active:hover { filter: brightness(1.12); box-shadow: inset 0 0 0 1px var(--accent-text); }
 
 /* Rolling month calendar */
 .rolling-cal { display: flex; flex-direction: column; height: 472px; }
@@ -260,34 +439,100 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .rolling-cal-head span { text-align: center; }
 .rolling-cal-body { flex: 1; overflow-y: auto; }
 .rolling-week { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--border); min-height: 84px; }
-.rolling-day { border-right: 1px solid var(--border); padding: 4px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.rolling-day {
+  border-right: 1px solid var(--border); padding: 4px; cursor: pointer; display: flex; flex-direction: column;
+  gap: 3px; min-width: 0; transition: background 120ms ease, box-shadow 120ms ease;
+}
 .rolling-day:last-child { border-right: none; }
 .rolling-day.today { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 2px; }
+/* Flush calendar-grid cell sharing borders with its neighbors — same reasoning as the segmented
+   toggles: an inset ring + tint instead of a scale, so hovering one day doesn't clip into the next. */
+.rolling-day:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
 .rolling-day-num { font-size: var(--fs-caption); color: var(--muted); }
 .rolling-day.today .rolling-day-num { color: var(--accent); font-weight: 700; }
 .rolling-pills { display: flex; flex-direction: column; gap: 2px; }
 
+/* `overflow: hidden` used to live on `.pill` itself (for its own label's ellipsis-truncation) — moved
+   onto `.pill-label` below instead, now that `.pill` also hosts a `.hovertip` (the activity name /
+   run type + distance, replacing the native `title` tooltip these used to carry): a hovertip is meant
+   to render *outside* its host's box (`bottom: calc(100% + 8px)`, see the shared "Hover tooltip"
+   pattern note above), and `overflow: hidden` on the host would have clipped it away entirely. */
 .pill {
-  font: inherit; font-size: 0.68rem; padding: 2px 5px; border-radius: 2px; cursor: pointer; text-align: left;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; border: none; font-weight: 600;
+  position: relative; font: inherit; font-size: 0.68rem; padding: 2px 5px; border-radius: 2px; cursor: pointer;
+  text-align: left; border: none; font-weight: 600; transition: transform 120ms ease, box-shadow 120ms ease;
 }
+.pill-label { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+/* Borderless colored pill: no border to highlight, so the ring comes from a box-shadow instead. */
+.pill:hover { transform: scale(1.045); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent); }
+/* Preserves the step-by-step breakdown's own line breaks (`buildDescription`'s "1,25k WU\n5x1k @
+   ...\n2,5k CD" convention) instead of `.hovertip-text`'s default `white-space: normal`, which would
+   collapse them into one run-on line — while still wrapping any individual line that's too long for
+   the tooltip's own `max-width` on its own. */
+.hovertip-steps { white-space: pre-line; }
+/* `.rolling-week` is a 7-column grid that can run much wider than the narrow sidebar cards (it's the
+   main calendar's own full width), but a pill's hovertip still centers on the pill itself, which sits
+   flush against its day cell's edge for the leftmost/rightmost columns with only `.rolling-day`'s own
+   4px padding as clearance — nowhere near enough for a ~200px-wide tooltip, and `.rolling-cal-body`'s
+   `overflow-y: auto` clips the x-axis the same way `.side-top`/`.list-view` do (see their own clearance
+   comments above). Same three-zone trade-off as `.form-context-cell` (read that rule's comment for the
+   full reasoning): left 3 day columns anchor left, right 3 anchor right, only the middle (4th) column
+   keeps the default centered anchor. */
+.rolling-week .rolling-day:nth-child(-n + 3) .hovertip { left: 0; transform: translate(0, 2px); }
+.rolling-week .rolling-day:nth-child(-n + 3) .hovertip-host:hover .hovertip,
+.rolling-week .rolling-day:nth-child(-n + 3) .hovertip-host:focus-within .hovertip {
+  transform: translate(0, 0);
+}
+.rolling-week .rolling-day:nth-child(-n + 3) .hovertip::after { display: none; }
+.rolling-week .rolling-day:nth-child(n + 5) .hovertip { left: auto; right: 0; transform: translate(0, 2px); }
+.rolling-week .rolling-day:nth-child(n + 5) .hovertip-host:hover .hovertip,
+.rolling-week .rolling-day:nth-child(n + 5) .hovertip-host:focus-within .hovertip {
+  transform: translate(0, 0);
+}
+.rolling-week .rolling-day:nth-child(n + 5) .hovertip::after { display: none; }
 
 /* List view */
-.list-view { max-height: 472px; overflow-y: auto; display: grid; gap: 2px; }
+/* Horizontal-only clearance for `.list-entry`'s hover scale/ring (see its rule below), same mechanism
+   as `.side-top`'s own clearance comment above (read that one for the full explanation) — `overflow-y:
+   auto` here forces `overflow-x` to also compute to `auto` rather than `visible`, so without this,
+   every `.list-entry`'s hover ring was clipped flush at `.list-view`'s left/right edges (only the very
+   narrow 4px of `.list-day`'s own horizontal padding stood between them). Paired negative margin +
+   equal padding, horizontal only: `.list-view` is a block-level (`display: grid`) box with an auto
+   width, so the negative margin widens its actual rendered box by 2×10px (bleeding harmlessly into
+   `.cal`'s own padding) while the matching padding pushes its children back in by that same 10px — net
+   zero shift at rest, 10px of clearance on each side when hovering. 10px (vs. `.side-top`'s 6px)
+   because `.list-entry` both scales more (1.03 vs. .side-top's 1.02) and can render much wider here —
+   this column isn't the fixed 300px side column, it's the flexible main content column. */
+.list-view { max-height: 472px; overflow-y: auto; display: grid; gap: 2px; padding: 0 10px; margin: 0 -10px; }
 .list-day { padding: 8px 4px; border-bottom: 1px solid var(--border); }
 .list-day.today { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 2px; }
-.list-day-head { font-size: 0.85rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.list-day-head {
+  font-size: 0.85rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  margin-bottom: 6px; border-radius: 2px; transition: background 120ms ease;
+}
+/* Borderless header row: background tint only, same treatment as .today-line. */
+.list-day-head:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .list-today-badge { font-size: var(--fs-micro); font-weight: 700; color: var(--accent); border: 1px solid var(--accent); border-radius: 2px; padding: 1px 7px; }
 .list-day-entries { display: grid; gap: 5px; }
 .list-entry {
   display: flex; align-items: center; gap: 8px; font: inherit; font-size: 0.85rem; text-align: left;
   padding: 7px 9px; border-radius: 2px; border: 1px solid var(--border); background: var(--bg); cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
 .list-entry.planned { border-style: dashed; }
+/* Bordered row card: the regular scale+border+ring treatment, at a smaller scale than a standalone
+   button/card since these sit tightly stacked with only a 5px gap between them. */
+.list-entry:hover { transform: scale(1.03); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .list-entry-dot { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); flex: none; }
 .list-entry-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-entry-sub { color: var(--muted); font-size: var(--fs-caption); flex: none; }
-.list-entry-empty { color: var(--muted); font-size: var(--fs-label); cursor: pointer; padding: 4px 2px; }
+.list-entry-empty {
+  color: var(--muted); font-size: var(--fs-label); cursor: pointer; padding: 4px 2px; border-radius: 2px;
+  transition: background 120ms ease, color 120ms ease;
+}
+.list-entry-empty:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); color: var(--text); }
 
 /* Active week / mileage chart: stacked actual (Strava, orange) + planned (by type) segments */
 .bar-seg { display: block; height: 100%; }
@@ -323,7 +568,12 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
    them, so the last one's own right edge lands exactly on the card's right edge, flush with the
    date above (same trick as the topbar: an even space-between over naturally-sized items, not an
    equal-width grid that leaves left-aligned text short of the edge). */
-.latest-run { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; cursor: pointer; margin-bottom: 0; }
+.latest-run {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px;
+  cursor: pointer; margin-bottom: 0; transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+/* Card: the regular scale+border+ring treatment, at a smaller scale since it's a large, full-width box. */
+.latest-run:hover { transform: scale(1.02); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .latest-run-head { display: flex; justify-content: space-between; align-items: center; }
 .latest-run-name { font-weight: 600; margin: 4px 0 8px; }
 .latest-run-stats { display: flex; justify-content: space-between; gap: 6px; }
@@ -342,8 +592,17 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
 .week-history-toggle button {
   font: inherit; font-size: 0.75rem; padding: 3px 9px; border: none; background: var(--panel);
   color: var(--text); cursor: pointer;
+  transition: background 120ms ease, box-shadow 120ms ease, filter 120ms ease;
 }
 .week-history-toggle button.active { background: var(--accent); color: var(--accent-text); }
+.week-history-toggle button:not(.active):hover {
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.week-history-toggle button.active:hover { filter: brightness(1.12); box-shadow: inset 0 0 0 1px var(--accent-text); }
+/* .week-history-toggle's buttons are the only clickable thing in this widget — the rows themselves
+   (.week-history-row below) are plain, non-interactive display rows with no onClick, so they
+   deliberately get no hover reaction (see docs/ARCHITECTURE.md's "Hover interaction" pattern note). */
 /* ~2 rows shorter than showing every visible row at a glance used to (each row + its gap is ~43px) —
    the mileage chart beside it is sized to match this list's own rendered height (see App.tsx/styles.css
    .side-top), so shortening this list also shortens the chart to match, automatically. */
@@ -370,10 +629,38 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
    equal gaps, so the last one's right edge lands exactly on the box's own right edge. */
 .activity-totals { justify-content: space-between; flex-wrap: wrap; gap: 10px; }
 .activity-totals > div { flex: none; }
-.lap-charts { display: grid; gap: 14px; margin-top: 2px; }
+
+/* Pace/Heart Rate charts — two interchangeable views of the same metrics, switched with
+   `.chart-mode-toggle` (a `.seg-toggle`): the default `StreamChart` (a continuous line through every
+   ~10s-bucketed, 30s-rolling-averaged sample — see StreamChart.tsx) and the older per-lap-average
+   `LapChart`. Only one mode's block is mounted at a time (see ActivityDetail.tsx's `effectiveMode`),
+   so `.stream-charts`/`.lap-charts` never both occupy layout space at once. */
+.chart-mode-head { display: flex; justify-content: space-between; align-items: center; margin-top: 2px; }
+.chart-mode-toggle { display: flex; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
+.stream-charts { display: grid; gap: 14px; margin-top: 4px; }
+.stream-chart-block { display: grid; gap: 4px; }
+.stream-chart-row { display: flex; align-items: flex-start; gap: 8px; }
+.stream-chart-plot { flex: 1; min-width: 0; position: relative; }
+.stream-chart { display: block; width: 100%; height: 96px; cursor: crosshair; }
+.stream-chart-xaxis { position: relative; height: 14px; border-top: 1px solid var(--border); }
+.stream-chart-xaxis span { position: absolute; top: 2px; font-size: var(--fs-micro); color: var(--muted); white-space: nowrap; }
+.stream-chart-axis { position: relative; height: 96px; font-size: var(--fs-micro); color: var(--muted); text-align: right; min-width: 48px; }
+.stream-chart-axis span { position: absolute; right: 0; white-space: nowrap; }
+/* Hover crosshair (a dashed vertical line + a dot on the line at the nearest sample) and the small
+   floating tooltip beside it — direct port of the pattern validated in the live comparison demo before
+   this was built. The line/dot are plain SVG elements rendered only while a sample is hovered (React
+   conditionally mounts them), unlike the demo's always-present-but-opacity:0 elements, so no `opacity`
+   toggling is needed here beyond the inline `opacity: 1` set at mount. */
+.stream-crosshair-line { stroke: var(--muted); stroke-width: 0.4; stroke-dasharray: 2 1.5; }
+.stream-tooltip {
+  position: absolute; top: 4px; pointer-events: none; background: var(--text); color: var(--bg);
+  font-size: var(--fs-micro); padding: 2px 6px; border-radius: 2px; white-space: nowrap;
+  transform: translateX(-50%);
+}
+.lap-charts { display: grid; gap: 14px; margin-top: 4px; }
 .lap-chart-block { display: grid; gap: 4px; }
 .lap-chart-row { display: flex; align-items: flex-start; gap: 8px; }
-.lap-chart-plot { flex: 1; min-width: 0; }
+.lap-chart-plot { flex: 1; min-width: 0; position: relative; }
 .lap-chart { display: block; width: 100%; height: 78px; cursor: crosshair; }
 .lap-chart-xaxis { position: relative; height: 14px; border-top: 1px solid var(--border); }
 .lap-chart-xaxis span { position: absolute; top: 2px; font-size: var(--fs-micro); color: var(--muted); white-space: nowrap; }
@@ -463,6 +750,30 @@ main { display: grid; gap: 16px; grid-template-columns: 1fr; }
   font-size: var(--fs-micro); font-weight: 600; border-radius: 2px; padding: 2px 3px;
   min-width: 26px; max-width: 100%; text-align: center; overflow: hidden; text-overflow: clip; white-space: nowrap;
 }
+/* `.hovertip`'s default centered anchor (see styles.css's shared "Hover tooltip" pattern note) works
+   fine for a standalone element, but these cells sit 7-across in a narrow strip — `.form-context` is as
+   narrow as ~320px, so each cell is only ~40px wide, far narrower than a typical tooltip. Centering on
+   every cell would overflow `.form-context`'s edges (whose `overflow-y: auto` forces `overflow-x` to
+   clip too — same mechanism as `.side-top`/`.list-view`'s own clearance fixes) for most of the 7
+   columns, not just the two at the very edge. Instead of chasing pixel-perfect containment (not
+   practical without JS here — the tooltip's content is dynamic and unbounded, one row per entry that
+   day), three zones trade a *little* centering accuracy for staying roughly inside the strip: the left
+   three cells anchor their tooltip's left edge to their own left edge, the right three anchor right,
+   and only the middle (4th) cell keeps the default centered anchor. The caret is dropped for the
+   anchored zones — at 50% of `.hovertip`, it would misleadingly point away from a cell it's no longer
+   centered over. */
+.form-context-strip .form-context-cell:nth-child(-n + 3) .hovertip { left: 0; transform: translate(0, 2px); }
+.form-context-strip .form-context-cell:nth-child(-n + 3):hover .hovertip,
+.form-context-strip .form-context-cell:nth-child(-n + 3):focus-within .hovertip {
+  transform: translate(0, 0);
+}
+.form-context-strip .form-context-cell:nth-child(-n + 3) .hovertip::after { display: none; }
+.form-context-strip .form-context-cell:nth-child(n + 5) .hovertip { left: auto; right: 0; transform: translate(0, 2px); }
+.form-context-strip .form-context-cell:nth-child(n + 5):hover .hovertip,
+.form-context-strip .form-context-cell:nth-child(n + 5):focus-within .hovertip {
+  transform: translate(0, 0);
+}
+.form-context-strip .form-context-cell:nth-child(n + 5) .hovertip::after { display: none; }
 /* .training-load (shared with ActiveWeekCard, see TrainingLoadGauge.tsx) brings its own margin-top —
    here that would stack on top of .form-context's own `gap: 14px`, doubling the space above it. Only
    the border-top/padding-top (the visual divider) are wanted here; the vertical gap itself is already
@@ -493,7 +804,10 @@ textarea { resize: vertical; }
 .date-field-pick {
   flex: none; font-size: 16px; line-height: 1; padding: 8px 10px; border-radius: 2px;
   border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
+/* Small standalone icon button: the regular scale+border+ring treatment. */
+.date-field-pick:hover { transform: scale(1.08); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .date-field-native {
   position: absolute; inset: auto 0 0 auto; width: 1px !important; height: 1px; padding: 0;
   border: none; opacity: 0; pointer-events: none;
@@ -503,8 +817,15 @@ textarea { resize: vertical; }
 .chip {
   font: inherit; font-size: 0.85rem; padding: 6px 12px; border-radius: 2px; cursor: pointer;
   border: 1.5px solid var(--chip); background: transparent; color: var(--text);
+  transition: transform 120ms ease, background 120ms ease, filter 120ms ease;
 }
 .chip.active { background: var(--chip); color: var(--chip-text, #fff); }
+/* Chip already carries its own type color as a border — its hover keeps that border and adds a scale
+   plus a tint of the app accent (not the chip's own color, which stays as the identity signal), same
+   as the demo's `.opt-both .chip:hover`. The already-filled `.active` chip gets a brightness lift
+   instead of a competing tint. */
+.chip:not(.active):hover { transform: scale(1.045); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.chip.active:hover { transform: scale(1.045); filter: brightness(1.08); }
 
 .actions { display: flex; gap: 8px; align-items: center; }
 .spacer { flex: 1; }
@@ -528,15 +849,42 @@ textarea { resize: vertical; }
 .seg-toggle button {
   font: inherit; font-size: 12px; padding: 5px 8px; border: none; background: var(--bg);
   color: var(--text); cursor: pointer; line-height: 1;
+  transition: background 120ms ease, box-shadow 120ms ease, filter 120ms ease;
 }
 .seg-toggle button:not(:first-child) { border-left: 1px solid var(--border); }
 .seg-toggle button.active { background: var(--accent); color: var(--accent-text); }
+.seg-toggle button:not(.active):hover {
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg));
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.seg-toggle button.active:hover { filter: brightness(1.12); box-shadow: inset 0 0 0 1px var(--accent-text); }
 .step-remove {
   margin-left: auto; border: none; background: transparent; color: var(--muted); cursor: pointer;
-  font-size: 1rem; padding: 2px 4px; line-height: 1;
+  font-size: 1rem; padding: 2px 4px; line-height: 1; border-radius: 2px;
+  transition: transform 120ms ease, background 120ms ease, color 120ms ease;
 }
-.step-remove:hover { color: var(--danger); }
+/* Small borderless icon button: scale plus a tint of its own hover color (danger, already established)
+   rather than the app accent, since red is already the signal this control gives on hover. */
+.step-remove:hover { color: var(--danger); transform: scale(1.15); background: color-mix(in srgb, var(--danger) 12%, transparent); }
 
 .totals { display: flex; gap: 20px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 2px; }
 .totals > div { display: grid; gap: 2px; }
 .totals strong { font-size: var(--fs-value-lg); }
+
+/* Every clickable element in the app reacts on hover (see docs/ARCHITECTURE.md's "Hover interaction"
+   pattern note) via a transition on transform/background/border-color/box-shadow/filter defined on
+   each element above. Users who've asked for reduced motion still get the highlight (it communicates
+   "this is clickable"), just without the animated scale/transition — the effect applies instantly and
+   flat instead. */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+  .btn:hover,
+  .date-field-pick:hover,
+  .chip:hover,
+  .pill:hover,
+  .latest-run:hover,
+  .list-entry:hover,
+  .step-remove:hover {
+    transform: none;
+  }
+}

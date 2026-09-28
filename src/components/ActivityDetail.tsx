@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react';
 import { formatDuration, formatKm, formatPace } from '../domain/run';
-import { getActivityDetail, type ActivityDetail as ActivityDetailData, type Lap, type StravaActivity } from '../lib/strava';
+import {
+  getActivityDetail,
+  getActivityStreams,
+  type ActivityDetail as ActivityDetailData,
+  type Lap,
+  type StravaActivity,
+  type StreamPoint,
+} from '../lib/strava';
 import { getStandardModalHeight } from '../lib/modalSize';
+import { ceilToStep, evenTicks, floorToStep, niceKmStep } from '../lib/chartMath';
+import StreamChart from './StreamChart';
 
 interface Props {
   activity: StravaActivity;
@@ -12,42 +21,6 @@ const CHART_W = 100;
 const CHART_H = 56;
 const MIN_BAR_H = 3;
 const BAR_GAP = 0.6;
-
-/** A "nice" round-km step for x-axis ticks, scaled to how far the run covered. */
-function niceKmStep(totalKm: number): number {
-  if (totalKm <= 3) return 0.5;
-  if (totalKm <= 6) return 1;
-  if (totalKm <= 12) return 2;
-  if (totalKm <= 25) return 5;
-  return 10;
-}
-
-/** Rounds `v` DOWN to the nearest multiple of `step` — used for the axis minimum, which must never
- * land above the padded observed minimum (rounding to the "nearest" multiple instead could round up
- * and eat into the required padding, or even land above the observed minimum itself). */
-function floorToStep(v: number, step: number): number {
-  return Math.floor(v / step) * step;
-}
-
-/** Rounds `v` UP to the nearest multiple of `step` — the maximum's counterpart to `floorToStep`. */
-function ceilToStep(v: number, step: number): number {
-  return Math.ceil(v / step) * step;
-}
-
-/**
- * `count` y-axis tick VALUES evenly spaced, by position, between `axisMin` and `axisMax` (inclusive
- * of both ends) — always `count` of them (min, `count - 2` evenly-spaced values in between, max),
- * regardless of whether the in-between values land on a "nice" round number. Each tick's vertical
- * POSITION uses its exact value, so it still lines up precisely with where that value falls between
- * the bars; the label TEXT shown for it is rounded separately, by `unitFmt` (whole bpm for heart
- * rate, whole seconds for pace via `formatPace`), so the axis reads as clean integers without the
- * tick marks themselves needing to snap to a rounded value first.
- */
-function evenTicks(axisMin: number, axisMax: number, count = 5): number[] {
-  const span = axisMax - axisMin;
-  if (span <= 0) return [axisMin];
-  return Array.from({ length: count }, (_, i) => axisMin + (span * i) / (count - 1));
-}
 
 /**
  * A lap-by-lap bar chart. Each bar's width is proportional to that lap's distance (so a 0.33 km
@@ -60,7 +33,15 @@ function evenTicks(axisMin: number, axisMax: number, count = 5): number[] {
  * nearest multiple of `axisStep` — so the axis bounds are always both (a) strictly outside the
  * observed range by at least `axisPadding`, and (b) a "nice" rounded value (a half-minute for pace,
  * a multiple of 10 for heart rate), and the tallest/shortest bar never touches the top or bottom of
- * the plot.
+ * the plot. Kept as the secondary ("Laps") view alongside the default `StreamChart` — see the
+ * Streams/Laps toggle below — for whoever wants the older per-lap-average read.
+ *
+ * Each bar's hover readout is the one `.hovertip` in the app that can't be pure CSS (see the shared
+ * "Hover tooltip" pattern note in styles.css for why: these bars are `<rect>`s inside a scaled SVG
+ * `viewBox`, where embedding the real bordered-card markup at a fixed, un-stretched size isn't
+ * practical) — `hoverIdx` tracks which bar (if any) has the mouse over it, and the `.hovertip` itself
+ * renders as a plain HTML sibling of the `<svg>`, positioned by that bar's own x-center percentage,
+ * mirroring the hover-crosshair approach `StreamChart` already uses for the same underlying reason.
  */
 function LapChart({
   laps,
@@ -85,6 +66,8 @@ function LapChart({
    * never smaller. */
   axisPadding: number;
 }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
   const values = laps.map(accessor);
   const present = values.filter((v): v is number => v != null);
   if (present.length < 2) return null;
@@ -113,10 +96,15 @@ function LapChart({
         width: Math.max(x1 - x0 - BAR_GAP, 0.4),
         height,
         y: CHART_H - height,
-        label: `Lap ${l.index}: ${unitFmt(v)}`,
+        lapIndex: l.index,
+        valueLabel: unitFmt(v),
       };
     })
-    .filter((b): b is { key: number; x: number; width: number; height: number; y: number; label: string } => b !== null);
+    .filter(
+      (b): b is { key: number; x: number; width: number; height: number; y: number; lapIndex: number; valueLabel: string } =>
+        b !== null,
+    );
+  const hoverBar = hoverIdx != null ? bars.find((b) => b.key === hoverIdx) : undefined;
 
   // Intermediate y-axis labels between the bounds, positioned by the same normalized-height math as
   // the bars themselves so each label lines up with the row of bars it corresponds to.
@@ -136,9 +124,16 @@ function LapChart({
       <div className="lap-chart-plot">
         <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} preserveAspectRatio="none" className="lap-chart">
           {bars.map((b) => (
-            <rect key={b.key} x={b.x} y={b.y} width={b.width} height={b.height} fill={color}>
-              <title>{b.label}</title>
-            </rect>
+            <rect
+              key={b.key}
+              x={b.x}
+              y={b.y}
+              width={b.width}
+              height={b.height}
+              fill={color}
+              onMouseEnter={() => setHoverIdx(b.key)}
+              onMouseLeave={() => setHoverIdx((h) => (h === b.key ? null : h))}
+            />
           ))}
           {bounds.slice(1, -1).map((d, i) => (
             <line
@@ -152,6 +147,14 @@ function LapChart({
             />
           ))}
         </svg>
+        {hoverBar && (
+          <span className="hovertip js-shown" style={{ left: `${((hoverBar.x + hoverBar.width / 2) / CHART_W) * 100}%` }}>
+            <span className="hovertip-row">
+              <span className="hovertip-key">Lap {hoverBar.lapIndex}</span>
+              <span className="hovertip-value">{hoverBar.valueLabel}</span>
+            </span>
+          </span>
+        )}
         <div className="lap-chart-xaxis">
           {ticks.map((t, i) => (
             <span
@@ -182,16 +185,27 @@ function LapChart({
 /** Distance, time, pace, HR, cadence, and a per-lap breakdown for one completed Strava run. */
 export default function ActivityDetail({ activity, onClose }: Props) {
   const [detail, setDetail] = useState<ActivityDetailData | null>(null);
+  const [streams, setStreams] = useState<StreamPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Default to the continuous ~10s-sample view (validated against the per-lap view in a live
+  // comparison demo before this was built); falls back to 'laps' automatically below when a run has
+  // no usable stream data (an old/third-party-imported activity), regardless of this default.
+  const [chartMode, setChartMode] = useState<'streams' | 'laps'>('streams');
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    getActivityDetail(activity.id)
-      .then((d) => {
-        if (!cancelled) setDetail(d);
+    // Fetched together (not gated on each other) so a slow or failing streams call never blocks the
+    // laps table/chart from showing — getActivityStreams already swallows its own request errors and
+    // resolves to [], so this Promise.all only rejects on a real getActivityDetail failure.
+    Promise.all([getActivityDetail(activity.id), getActivityStreams(activity.id)])
+      .then(([d, s]) => {
+        if (!cancelled) {
+          setDetail(d);
+          setStreams(s);
+        }
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -219,6 +233,12 @@ export default function ActivityDetail({ activity, onClose }: Props) {
     update();
     return () => mq.removeEventListener('change', update);
   }, []);
+
+  const hasStreams = streams.length > 1;
+  const hasLaps = !!detail && detail.laps.length > 1;
+  // A run with only one of the two available just shows that one, with no toggle to switch to an
+  // empty view; 'streams' stays the default whenever both are present.
+  const effectiveMode = hasStreams ? chartMode : 'laps';
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -264,7 +284,57 @@ export default function ActivityDetail({ activity, onClose }: Props) {
             </p>
           )}
 
-          {detail && detail.laps.length > 1 && (
+          {(hasStreams || hasLaps) && (
+            <div className="chart-mode-head">
+              <span className="label">Pace &amp; Heart Rate</span>
+              {hasStreams && hasLaps && (
+                <div className="seg-toggle chart-mode-toggle">
+                  <button
+                    type="button"
+                    className={effectiveMode === 'streams' ? 'active' : ''}
+                    onClick={() => setChartMode('streams')}
+                  >
+                    Streams
+                  </button>
+                  <button type="button" className={effectiveMode === 'laps' ? 'active' : ''} onClick={() => setChartMode('laps')}>
+                    Laps
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {effectiveMode === 'streams' && hasStreams && (
+            <div className="stream-charts">
+              <div className="stream-chart-block">
+                <span className="label">Pace</span>
+                <StreamChart
+                  points={streams}
+                  accessor={(p) => p.paceSecPerKm}
+                  color="#0284c7"
+                  invert
+                  unitFmt={(v) => `${formatPace(v)}/km`}
+                  axisStep={30}
+                  axisPadding={20}
+                />
+              </div>
+              {streams.some((p) => p.heartRate != null) && (
+                <div className="stream-chart-block">
+                  <span className="label">Heart Rate</span>
+                  <StreamChart
+                    points={streams}
+                    accessor={(p) => p.heartRate}
+                    color="#ef4444"
+                    unitFmt={(v) => `${Math.round(v)} bpm`}
+                    axisStep={10}
+                    axisPadding={8}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {effectiveMode === 'laps' && detail && hasLaps && (
             <div className="lap-charts">
               <div className="lap-chart-block">
                 <span className="label">Pace</span>
